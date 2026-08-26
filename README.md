@@ -17,6 +17,13 @@ Status ditampilkan sebagai teks besar di jendela video: **AMAN** (hijau) atau
 | **PERCLOS** | % waktu mata tertutup dalam 60 detik terakhir | indikator kantuk paling baku di literatur |
 | **MAR** (Mouth Aspect Ratio) | bukaan bibir ÷ lebar mulut | mendeteksi menguap |
 
+Mata memakai ambang **relatif** terhadap baseline, mulut memakai ambang
+**mutlak**. Sebabnya: saat kalibrasi bibir terkatup rapat sehingga baseline MAR
+nyaris nol (terukur 0,008 pada video uji) — rasio terhadap angka sekecil itu
+meledak, tersenyum saja bisa terbaca 1400% baseline. MAR sendiri sudah
+dinormalisasi terhadap lebar mulut sehingga cukup seragam antar orang: pada
+video uji mulut biasa 0,01–0,02 sedangkan menguap 0,72–0,97.
+
 Landmark wajah diambil dari **MediaPipe FaceLandmarker** (478 titik, penomoran
 sama dengan Face Mesh), jadi EAR dan MAR dihitung dari titik kelopak mata dan
 bibir yang sebenarnya — bukan tebakan dari kotak deteksi.
@@ -46,7 +53,10 @@ Salah satu saja terpenuhi sudah cukup:
 
 1. Mata terpejam menerus **> 1,2 detik** (EAR < 62% baseline)
 2. **PERCLOS > 28%** dalam 60 detik terakhir
-3. **Menguap ≥ 3×** dalam satu menit (MAR > 190% baseline selama ≥ 0,9 detik)
+3. **Menguap ≥ 3×** dalam satu menit (MAR > 0,50 selama ≥ 0,9 detik)
+
+PERCLOS baru ikut dinilai setelah jendela pengamatan terisi ≥ 30 detik. Tanpa
+syarat itu, satu kedipan panjang di detik-detik awal bisa terbaca 50%.
 
 Kedipan normal (< 0,5 detik) tidak dihitung sebagai terpejam, dan mulut menganga
 sesaat (bicara) tidak dihitung sebagai menguap.
@@ -85,6 +95,38 @@ Tips di Pi 5:
 - Pakai webcam USB yang mendukung **MJPG** (dipakai program secara default).
 - Kalau berat, turunkan resolusi di `config.json` ke `320×240`.
 - Pastikan pendingin/heatsink terpasang bila dipakai lama.
+
+---
+
+## Menganalisis rekaman video
+
+Selain webcam langsung, program bisa memproses berkas video — berguna untuk
+menguji ulang kasus yang sama berkali-kali sambil menyetel ambang.
+
+```bash
+./run.sh --sumber example.mp4 --kalibrasi 8 --tanpa-jendela \
+         --rekam hasil/example_anotasi.webm
+```
+
+Untuk sumber berkas, waktu diambil dari **timeline video**, bukan jam dinding,
+sehingga durasi kalibrasi dan jendela PERCLOS tetap benar walau pemrosesan
+berjalan lebih cepat daripada waktu nyata. Efek cermin dimatikan otomatis.
+
+Codec rekaman mengikuti ekstensi berkas: `.webm` (VP8) bisa langsung diputar
+peramban tanpa memasang codec apa pun, `.mp4` memakai MPEG-4 Part 2 karena
+wheel OpenCV tidak membawa encoder H.264.
+
+Di akhir sesi dicetak ringkasan: jumlah kedipan, jumlah menguap, dan daftar
+periode KANTUK lengkap dengan rentang waktu serta alasannya.
+
+```
+Frame diproses  : 1781
+Kedipan         : 19
+Menguap         : 2
+Periode KANTUK  : 2
+  1. 00:15.10 - 00:16.13 (1.0 detik) : mata terpejam 1.2 detik
+  2. 01:00.00 - 01:00.40 (0.4 detik) : mata terpejam 1.2 detik
+```
 
 ---
 
@@ -137,8 +179,10 @@ Semua ambang ada di `config.json` — bisa diubah tanpa menyentuh kode.
     "durasi_terpejam_detik": 1.2,    // terpejam selama ini -> KANTUK
     "perclos_window_detik": 60.0,
     "perclos_kantuk": 0.28,          // >28% -> KANTUK
+    "perclos_min_rentang": 30.0,     // PERCLOS dipercaya setelah 30 detik
     "durasi_kedip_maks": 0.5,        // batas atas durasi satu kedipan
-    "rasio_mulut_menguap": 1.9,      // MAR > 190% baseline = menganga
+    "mar_menguap": 0.50,             // ambang MUTLAK MAR untuk menganga
+    "mar_margin_baseline": 0.30,     // jarak minimum dari baseline tiap orang
     "durasi_menguap_detik": 0.9,
     "menguap_per_menit_kantuk": 3
   },

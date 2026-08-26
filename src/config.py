@@ -30,8 +30,16 @@ class AmbangConfig:
     durasi_terpejam_detik: float = 1.2   # terpejam menerus selama ini -> KANTUK
     perclos_window_detik: float = 60.0   # panjang jendela PERCLOS
     perclos_kantuk: float = 0.28         # >28% waktu mata tertutup -> KANTUK
+    perclos_min_rentang: float = 30.0    # PERCLOS baru dipercaya setelah sekian detik
     durasi_kedip_maks: float = 0.5       # terpejam lebih lama dari ini bukan kedipan
-    rasio_mulut_menguap: float = 1.9     # MAR > 1.9x baseline = mulut menganga
+    # Mulut memakai ambang MUTLAK, bukan rasio terhadap baseline: saat
+    # kalibrasi bibir terkatup rapat sehingga baseline MAR nyaris nol
+    # (terukur 0.008 pada video uji), dan rasio terhadap angka sekecil itu
+    # meledak -- tersenyum saja bisa terbaca 1400% baseline. MAR sendiri
+    # sudah dinormalisasi terhadap lebar mulut, jadi cukup seragam antar
+    # orang. Pada video uji: mulut biasa 0.01-0.02, menguap 0.72-0.97.
+    mar_menguap: float = 0.50            # MAR di atas ini = mulut menganga
+    mar_margin_baseline: float = 0.30    # jaga jarak dari baseline tiap orang
     durasi_menguap_detik: float = 0.9    # menganga selama ini baru dihitung menguap
     menguap_per_menit_kantuk: int = 3
 

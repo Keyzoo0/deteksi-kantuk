@@ -66,8 +66,10 @@ class Status:
     mata_tertutup: bool = False
     durasi_tertutup: float = 0.0
     ear_norm: float = 1.0        # 1.0 = sama seperti saat kalibrasi
-    mar_norm: float = 1.0
+    mar: float = 0.0             # nilai MAR mentah
+    ambang_mar: float = 0.0      # ambang menguap yang sedang dipakai
     perclos: float = 0.0
+    perclos_matang: bool = False  # True bila jendela pengamatan sudah cukup panjang
     kedip_total: int = 0
     kedip_per_menit: int = 0
     menguap_total: int = 0
@@ -81,6 +83,9 @@ class PenilaiKantuk:
     def __init__(self, ambang: AmbangConfig, baseline: Baseline) -> None:
         self.a = ambang
         self.b = baseline
+        # Ambang menguap: nilai mutlak, tapi tidak pernah lebih dekat dari
+        # margin tertentu ke bibir terkatup orang ini.
+        self.ambang_mar = max(ambang.mar_menguap, baseline.mar + ambang.mar_margin_baseline)
 
         self._jendela: deque[tuple[float, bool]] = deque()  # (waktu, mata_tertutup)
         self._kedip: deque[float] = deque()
@@ -106,6 +111,7 @@ class PenilaiKantuk:
                 self._hilang_sejak = t
             self._pangkas(self._jendela, t, a.perclos_window_detik)
             st.perclos = self._perclos()
+            st.perclos_matang = self._rentang() >= a.perclos_min_rentang
             st.kedip_total, st.menguap_total = self.kedip_total, self.menguap_total
             if t - self._hilang_sejak > 3.0:
                 st.alasan.append("wajah tidak terdeteksi")
@@ -113,7 +119,8 @@ class PenilaiKantuk:
         self._hilang_sejak = None
 
         st.ear_norm = hasil.ear / b.ear if b.ear > 1e-6 else 1.0
-        st.mar_norm = hasil.mar / b.mar if b.mar > 1e-6 else 1.0
+        st.mar = hasil.mar
+        st.ambang_mar = self.ambang_mar
 
         self._perbarui_mata(st, t)
         self._perbarui_mulut(st, t)
@@ -131,6 +138,7 @@ class PenilaiKantuk:
         self._jendela.append((t, tertutup))
         self._pangkas(self._jendela, t, a.perclos_window_detik)
         st.perclos = self._perclos()
+        st.perclos_matang = self._rentang() >= a.perclos_min_rentang
 
         if tertutup:
             if self._tertutup_sejak is None:
@@ -150,7 +158,7 @@ class PenilaiKantuk:
     # --- bagian mulut --------------------------------------------------------
     def _perbarui_mulut(self, st: Status, t: float) -> None:
         a = self.a
-        if st.mar_norm > a.rasio_mulut_menguap:
+        if st.mar > self.ambang_mar:
             if self._menguap_sejak is None:
                 self._menguap_sejak = t
                 self._menguap_tercatat = False
@@ -178,6 +186,12 @@ class PenilaiKantuk:
                 break
             d.popleft()
 
+    def _rentang(self) -> float:
+        """Panjang waktu yang benar-benar tercakup jendela pengamatan."""
+        if len(self._jendela) < 2:
+            return 0.0
+        return self._jendela[-1][0] - self._jendela[0][0]
+
     def _perclos(self) -> float:
         """Persentase waktu mata tertutup dalam jendela pengamatan."""
         if len(self._jendela) < 10:
@@ -190,7 +204,9 @@ class PenilaiKantuk:
 
         if st.durasi_tertutup >= a.durasi_terpejam_detik:
             alasan.append(f"mata terpejam {st.durasi_tertutup:.1f} detik")
-        if st.perclos >= a.perclos_kantuk:
+        # PERCLOS dari jendela yang baru terisi sebentar mudah menipu: satu
+        # kedipan panjang di detik-detik awal bisa terbaca 50%.
+        if st.perclos_matang and st.perclos >= a.perclos_kantuk:
             alasan.append(f"PERCLOS {st.perclos * 100:.0f}%")
         if st.menguap_per_menit >= a.menguap_per_menit_kantuk:
             alasan.append(f"menguap {st.menguap_per_menit}x/menit")
