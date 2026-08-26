@@ -17,7 +17,7 @@
     "mar_menguap": 0.5,
     "mar_margin_baseline": 0.3,
     "durasi_menguap_detik": 0.9,
-    "menguap_per_menit_kantuk": 3
+    "menguap_per_menit_kantuk": 1
   },
   "kalibrasi_detik": 4.0,
   "tampilkan_jendela": true

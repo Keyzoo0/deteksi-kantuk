@@ -41,7 +41,7 @@ class AmbangConfig:
     mar_menguap: float = 0.50            # MAR di atas ini = mulut menganga
     mar_margin_baseline: float = 0.30    # jaga jarak dari baseline tiap orang
     durasi_menguap_detik: float = 0.9    # menganga selama ini baru dihitung menguap
-    menguap_per_menit_kantuk: int = 3
+    menguap_per_menit_kantuk: int = 1    # satu kali menguap sudah dianggap kantuk
 
 
 @dataclass
