@@ -13,6 +13,7 @@ class KameraConfig:
     lebar: int = 640
     tinggi: int = 480
     fps: int = 30                # fps yang diminta ke driver kamera
+    fourcc: str = "MJPG"         # "MJPG" | "YUYV" | "" (biarkan driver)
     flip_horizontal: bool = True  # tampilan cermin, lebih natural untuk pengguna
 
 

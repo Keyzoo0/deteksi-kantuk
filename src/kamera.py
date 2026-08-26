@@ -30,12 +30,20 @@ def buka_kamera(cfg: KameraConfig) -> cv2.VideoCapture:
         )
 
     if isinstance(sumber, int):
-        # MJPG supaya webcam USB sanggup 640x480 pada fps tinggi tanpa membebani USB.
-        cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
+        # MJPG dipakai secara default. Aliran YUYV 640x480 butuh ~18 MB/s dan
+        # banyak webcam USB tidak sanggup: frame datang setengah jadi sehingga
+        # gambar tampak "robek" (teruji: 21 dari 30 frame robek pada YUYV,
+        # 4 dari 30 pada MJPG). Ganti ke "YUYV" lewat config bila webcam Anda
+        # justru bermasalah dengan MJPG.
+        if cfg.fourcc:
+            cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*cfg.fourcc[:4]))
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, cfg.lebar)
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, cfg.tinggi)
         cap.set(cv2.CAP_PROP_FPS, cfg.fps)
-        cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)        # kurangi lag frame lama
+        # Catatan: CAP_PROP_BUFFERSIZE=1 sengaja TIDAK dipakai. Di beberapa
+        # webcam UVC, antrean 1 buffer justru memangkas throughput sampai
+        # separuh (teruji: 16.5 -> 8.5 fps), sementara lag antar frame tidak
+        # terasa karena loop deteksi jauh lebih cepat daripada kamera.
     return cap
 
 

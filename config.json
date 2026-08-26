@@ -4,6 +4,7 @@
     "lebar": 640,
     "tinggi": 480,
     "fps": 30,
+    "fourcc": "MJPG",
     "flip_horizontal": true
   },
   "ambang": {

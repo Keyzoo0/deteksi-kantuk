@@ -65,7 +65,7 @@ def main() -> int:
     tampilkan = cfg.tampilkan_jendela and not arg.tanpa_jendela
 
     print("=" * 62)
-    print(" DETEKSI RASA KANTUK - MediaPipe Face Mesh + EAR/PERCLOS/MAR")
+    print(" DETEKSI RASA KANTUK - MediaPipe FaceLandmarker + EAR/PERCLOS/MAR")
     print("=" * 62)
 
     detektor = DetektorWajah()
@@ -101,7 +101,7 @@ def main() -> int:
                 frame = cv2.flip(frame, 1)
 
             t = time.monotonic()
-            hasil = detektor.proses(frame)
+            hasil = detektor.proses(frame, int(t * 1000))
 
             dt = t - t_lalu
             t_lalu = t
@@ -117,6 +117,13 @@ def main() -> int:
                           f"({baseline.sampel} frame)\n")
                 elif tampilkan:
                     gambar_kalibrasi(frame, hasil, kalibrator.sisa_detik(t))
+                elif t - cetak_terakhir > 0.5:
+                    sisa = kalibrator.sisa_detik(t)
+                    pesan = (f"kalibrasi {sisa:.1f} detik lagi" if hasil.ada_wajah
+                             else "menunggu wajah terdeteksi")
+                    sys.stdout.write(f"\r  {pesan:<44}")
+                    sys.stdout.flush()
+                    cetak_terakhir = t
             else:
                 st = penilai.perbarui(hasil, t)
                 if tampilkan:
