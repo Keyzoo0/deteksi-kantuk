@@ -20,8 +20,9 @@ import cv2
 
 from .config import Config
 from .deteksi import DetektorWajah
-from .kamera import buka_kamera, info_kamera
+from .kamera import buka_kamera, info_kamera, sambung_ulang
 from .metrik import KANTUK, Kalibrator, PenilaiKantuk, Status
+from .senyap import redam_pustaka_c, redam_stderr, siapkan_font_qt
 from .tampilan import gambar_kalibrasi, gambar_overlay
 
 AKAR = Path(__file__).resolve().parent.parent
@@ -38,7 +39,9 @@ def argumen() -> argparse.Namespace:
     p.add_argument("--kalibrasi", type=float, help="durasi kalibrasi dalam detik")
     p.add_argument("--tanpa-jendela", action="store_true",
                    help="mode headless: status dicetak ke terminal, tanpa imshow")
-    p.add_argument("--debug", action="store_true", help="gambar seluruh 468 landmark")
+    p.add_argument("--debug", action="store_true", help="gambar seluruh 478 landmark")
+    p.add_argument("--verbose", action="store_true",
+                   help="tampilkan pesan bawaan OpenCV/MediaPipe (mis. Corrupt JPEG)")
     return p.parse_args()
 
 
@@ -57,6 +60,15 @@ def cetak_status(st: Status, fps: float) -> None:
 
 def main() -> int:
     arg = argumen()
+    if arg.verbose:
+        return _jalankan(arg)
+    # Pesan pustaka C diredam supaya keluaran program terbaca; galat Python
+    # tetap muncul seperti biasa.
+    with redam_pustaka_c():
+        return _jalankan(arg)
+
+
+def _jalankan(arg: argparse.Namespace) -> int:
     cfg = Config.muat(arg.config)
     if arg.sumber:
         cfg.kamera.sumber = arg.sumber
@@ -68,8 +80,14 @@ def main() -> int:
     print(" DETEKSI RASA KANTUK - MediaPipe FaceLandmarker + EAR/PERCLOS/MAR")
     print("=" * 62)
 
-    detektor = DetektorWajah()
+    if tampilkan:
+        siapkan_font_qt()
+    # Kamera dibuka lebih dulu: bila perangkatnya tidak ada, program berhenti
+    # sebelum sempat memuat model, sehingga tidak meninggalkan objek MediaPipe
+    # yang belum ditutup (pembersihannya saat interpreter mati menghasilkan
+    # traceback "Exception ignored in ... FaceLandmarker.__del__").
     cap = buka_kamera(cfg.kamera)
+    detektor = DetektorWajah()
     print(f"Kamera   : sumber {cfg.kamera.sumber} -> {info_kamera(cap)}")
     print(f"Kalibrasi: {cfg.kalibrasi_detik:.0f} detik (tatap kamera, mata terbuka wajar)")
     print(f"Mode     : {'jendela OpenCV' if tampilkan else 'headless (terminal)'}")
@@ -82,6 +100,7 @@ def main() -> int:
     t_lalu = time.monotonic()
     cetak_terakhir = 0.0
     gagal_baca = 0
+    jendela_dibuat = False
     kode = 0
 
     try:
@@ -89,10 +108,20 @@ def main() -> int:
             ok, frame = cap.read()
             if not ok:
                 gagal_baca += 1
-                if gagal_baca > 30:
-                    print("\nKamera berhenti mengirim frame. Program dihentikan.")
-                    kode = 1
-                    break
+                if gagal_baca > 20:
+                    # Bukan sekadar frame lompat: kemungkinan besar perangkatnya
+                    # lepas dari bus USB. Coba sambungkan lagi tanpa kehilangan
+                    # hasil kalibrasi maupun hitungan PERCLOS.
+                    print("\n[kamera] aliran frame terputus, mencoba menyambung ulang...")
+                    cap = sambung_ulang(cap, cfg.kamera)
+                    if cap is None:
+                        print("Kamera tidak kembali. Program dihentikan.\n"
+                              "  Kamera internal yang sering lepas biasanya kena USB "
+                              "autosuspend; lihat bagian 'Kalau hasilnya tidak bagus' "
+                              "di README.")
+                        kode = 1
+                        break
+                    gagal_baca = 0
                 time.sleep(0.03)
                 continue
             gagal_baca = 0
@@ -133,7 +162,14 @@ def main() -> int:
                     cetak_terakhir = t
 
             if tampilkan:
-                cv2.imshow("Deteksi Rasa Kantuk", frame)
+                if jendela_dibuat:
+                    cv2.imshow("Deteksi Rasa Kantuk", frame)
+                else:
+                    # Pembuatan jendela pertama memicu beberapa pesan Qt/X11
+                    # yang tidak ada hubungannya dengan program.
+                    with redam_stderr():
+                        cv2.imshow("Deteksi Rasa Kantuk", frame)
+                    jendela_dibuat = True
                 tombol = cv2.waitKey(1) & 0xFF
                 if tombol in (ord("q"), 27):
                     break

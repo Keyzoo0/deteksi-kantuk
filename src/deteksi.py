@@ -21,6 +21,8 @@ os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "3")
 import cv2
 import numpy as np
 
+from .senyap import redam_stderr
+
 MODEL_URL = ("https://storage.googleapis.com/mediapipe-models/face_landmarker/"
              "face_landmarker/float16/1/face_landmarker.task")
 MODEL_DEFAULT = Path(__file__).resolve().parent.parent / "model" / "face_landmarker.task"
@@ -91,9 +93,13 @@ class DetektorWajah:
 
     def __init__(self, model: Path | str = MODEL_DEFAULT,
                  kepercayaan: float = 0.5) -> None:
-        import mediapipe as mp
-        from mediapipe.tasks.python import BaseOptions
-        from mediapipe.tasks.python import vision
+        # Impor dan pembuatan graf MediaPipe memuntahkan sederet baris
+        # W0000/INFO dari absl & TensorFlow Lite yang tidak bisa dimatikan
+        # lewat logging Python.
+        with redam_stderr():
+            import mediapipe as mp
+            from mediapipe.tasks.python import BaseOptions
+            from mediapipe.tasks.python import vision
 
         self._mp = mp
         model = pastikan_model(Path(model))
@@ -107,7 +113,8 @@ class DetektorWajah:
             output_face_blendshapes=False,           # tidak dipakai, hemat CPU
             output_facial_transformation_matrixes=False,
         )
-        self._landmarker = vision.FaceLandmarker.create_from_options(opsi)
+        with redam_stderr():
+            self._landmarker = vision.FaceLandmarker.create_from_options(opsi)
         self._stempel_ms = 0
 
     def proses(self, frame_bgr: np.ndarray, waktu_ms: int | None = None) -> HasilDeteksi:
