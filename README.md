@@ -96,7 +96,8 @@ Tips di Pi 5:
 ./run.sh --sumber video.mp4   # uji dari file video
 ./run.sh --kalibrasi 6        # kalibrasi 6 detik
 ./run.sh --tanpa-jendela      # headless, status dicetak ke terminal
-./run.sh --debug              # tampilkan seluruh 468 landmark
+./run.sh --debug              # tampilkan seluruh 478 landmark
+./run.sh --verbose            # tampilkan pesan bawaan OpenCV/MediaPipe
 ```
 
 Tombol saat jendela aktif:
@@ -161,6 +162,32 @@ turunkan `rasio_mata_tertutup` (mis. 0.55).
 | Wajah sering tidak terdeteksi | Cahaya kurang, wajah terlalu jauh/miring, atau frame robek. Pastikan wajah menghadap kamera dan cukup terang. |
 | **KANTUK** muncul padahal melek | Baseline terlanjur diambil saat mata setengah menutup. Tekan `c` untuk kalibrasi ulang sambil menatap kamera. |
 | FPS rendah padahal CPU santai | Batasnya di webcam, bukan program (inferensi hanya ±11 ms). Cek dengan `tools/cek_kamera.py`. |
+| **Jendela terbuka sebentar lalu mati**, muncul `VIDIOC_REQBUFS: errno=19 (No such device)` | Webcam lepas dari bus USB. Lihat bagian di bawah. |
+| `Kamera '0' tidak bisa dibuka` padahal tadi jalan | Nomor `/dev/videoN` bergeser setelah kamera lepas-sambung. Program sudah menyapu index lain secara otomatis; kalau tetap gagal, kameranya memang sedang tidak ada di sistem. |
+
+### Webcam lepas-sambung sendiri (USB autosuspend)
+
+Gejala di log kernel (`journalctl -k | tail`):
+
+```
+usb 1-4: USB disconnect, device number 6
+uvcvideo 1-4:1.1: Failed to resubmit video URB (-19).
+usb 1-4: new high-speed USB device number 7 using xhci_hcd
+```
+
+Kernel menidurkan kamera setelah 2 detik menganggur, lalu sebagian kamera —
+termasuk kamera internal laptop uji (SunplusIT `04f2:b71f`) — tidak bangun
+dengan benar dan malah lepas dari bus. Perbaikannya mematikan autosuspend
+untuk perangkat itu:
+
+```bash
+sudo ./tools/perbaiki_kamera_usb.sh              # berlaku sampai reboot
+sudo ./tools/perbaiki_kamera_usb.sh --permanen   # + aturan udev, tetap setelah reboot
+```
+
+Dari sisi program, kalau aliran frame terputus di tengah jalan, kamera
+disambungkan ulang otomatis (termasuk bila nomor `/dev/videoN`-nya berubah)
+tanpa kehilangan hasil kalibrasi maupun hitungan PERCLOS.
 
 ---
 
@@ -174,10 +201,12 @@ deteksi-kantuk/
 │   ├── kamera.py     # pembukaan webcam (V4L2, MJPG) + penanganan galat
 │   ├── deteksi.py    # MediaPipe Face Mesh -> EAR & MAR
 │   ├── metrik.py     # kalibrasi, PERCLOS, hitung kedip & menguap, level kantuk
-│   └── tampilan.py   # overlay OpenCV (kontur mata/mulut, panel metrik, banner)
+│   ├── tampilan.py   # overlay OpenCV (kontur mata/mulut, panel metrik, banner)
+│   └── senyap.py     # meredam pesan bawaan OpenCV/MediaPipe/libjpeg
 ├── tools/
-│   ├── cek_kamera.py   # ukur FPS nyata & frame robek tiap format kamera
-│   └── uji_logika.py   # uji penilaian kantuk dengan frame sintetis
+│   ├── cek_kamera.py            # ukur FPS nyata & frame robek tiap format
+│   ├── uji_logika.py            # uji penilaian kantuk dengan frame sintetis
+│   └── perbaiki_kamera_usb.sh   # matikan USB autosuspend (butuh sudo)
 ├── config.json
 ├── setup.sh / setup_raspi.sh / run.sh
 └── requirements.txt
