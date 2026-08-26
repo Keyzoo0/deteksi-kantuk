@@ -84,20 +84,22 @@ def main() -> int:
                      f"{st.perclos * 100:.0f}%"))
     hasil.append(uji("level KANTUK", st.level == KANTUK, ", ".join(st.alasan)))
 
-    print("\n4. Menguap: sesaat tidak dihitung, lama dihitung")
+    print("\n4. Menguap: sesaat tidak dihitung, dan KANTUK hanya selama menguap")
     p = PenilaiKantuk(a, BASELINE)
     t, _ = jalankan(p, 0.0, 2.0, EAR_BUKA)
     t, st = jalankan(p, t, 0.4, EAR_BUKA, MAR_NGANGA)     # bicara, 0.4 detik
     t, st = jalankan(p, t, 1.0, EAR_BUKA)
     hasil.append(uji("nganga 0.4 detik tidak dihitung", st.menguap_total == 0,
                      f"{st.menguap_total}x"))
-    for _ in range(3):                                     # 3 kali menguap 1.5 detik
-        t, _ = jalankan(p, t, 1.5, EAR_BUKA, MAR_NGANGA)
-        t, st = jalankan(p, t, 1.5, EAR_BUKA)
-    hasil.append(uji("3 kali menguap terhitung", st.menguap_total == 3,
-                     f"{st.menguap_total}x"))
-    hasil.append(uji("level KANTUK karena menguap", st.level == KANTUK,
-                     ", ".join(st.alasan)))
+    hasil.append(uji("level tetap AMAN", st.level == AMAN, f"level={st.level}"))
+
+    t, st = jalankan(p, t, 2.0, EAR_BUKA, MAR_NGANGA)     # menguap penuh
+    hasil.append(uji("menguap terhitung", st.menguap_total == 1, f"{st.menguap_total}x"))
+    hasil.append(uji("KANTUK selagi menguap", st.level == KANTUK, ", ".join(st.alasan)))
+
+    t, st = jalankan(p, t, 3.0, EAR_BUKA)                 # mulut menutup lagi
+    hasil.append(uji("kembali AMAN setelah mulut menutup", st.level == AMAN,
+                     f"level={st.level}, menguap tercatat {st.menguap_total}x"))
 
     print("\n5. Wajah hilang tidak boleh memicu alarm palsu")
     p = PenilaiKantuk(a, BASELINE)

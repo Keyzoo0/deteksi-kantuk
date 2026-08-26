@@ -41,7 +41,12 @@ class AmbangConfig:
     mar_menguap: float = 0.50            # MAR di atas ini = mulut menganga
     mar_margin_baseline: float = 0.30    # jaga jarak dari baseline tiap orang
     durasi_menguap_detik: float = 0.9    # menganga selama ini baru dihitung menguap
-    menguap_per_menit_kantuk: int = 1    # satu kali menguap sudah dianggap kantuk
+    kantuk_saat_menguap: bool = True     # KANTUK selama menguap berlangsung saja
+    # Aturan tambahan berbasis laju menguap. Bernilai 0 = dimatikan. Kalau
+    # diaktifkan (mis. 3), status KANTUK bertahan selama menguap masih masuk
+    # hitungan 60 detik terakhir -- alarm ikut menyala walau mulut sudah
+    # tertutup dan mata segar.
+    menguap_per_menit_kantuk: int = 0
 
 
 @dataclass

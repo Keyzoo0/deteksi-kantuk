@@ -53,7 +53,8 @@ Salah satu saja terpenuhi sudah cukup:
 
 1. Mata terpejam menerus **> 1,2 detik** (EAR < 62% baseline)
 2. **PERCLOS > 28%** dalam 60 detik terakhir
-3. **Menguap ≥ 3×** dalam satu menit (MAR > 0,50 selama ≥ 0,9 detik)
+3. **Sedang menguap** — MAR > 0,50 bertahan ≥ 0,9 detik. Status kembali AMAN
+   begitu mulut menutup; menguap tidak "menahan" alarm selama semenit.
 
 PERCLOS baru ikut dinilai setelah jendela pengamatan terisi ≥ 30 detik. Tanpa
 syarat itu, satu kedipan panjang di detik-detik awal bisa terbaca 50%.
@@ -123,9 +124,11 @@ periode KANTUK lengkap dengan rentang waktu serta alasannya.
 Frame diproses  : 1781
 Kedipan         : 19
 Menguap         : 2
-Periode KANTUK  : 2
-  1. 00:15.10 - 00:16.13 (1.0 detik) : mata terpejam 1.2 detik
-  2. 01:00.00 - 01:00.40 (0.4 detik) : mata terpejam 1.2 detik
+Periode KANTUK  : 4
+  1. 00:11.67 - 00:13.73 (2.1 detik) : sedang menguap
+  2. 00:15.10 - 00:16.13 (1.0 detik) : mata terpejam 1.2 detik
+  3. 00:49.27 - 00:51.80 (2.5 detik) : sedang menguap
+  4. 01:00.00 - 01:00.40 (0.4 detik) : mata terpejam 1.2 detik
 ```
 
 ---
@@ -184,6 +187,8 @@ Semua ambang ada di `config.json` — bisa diubah tanpa menyentuh kode.
     "mar_menguap": 0.50,             // ambang MUTLAK MAR untuk menganga
     "mar_margin_baseline": 0.30,     // jarak minimum dari baseline tiap orang
     "durasi_menguap_detik": 0.9,
+    "kantuk_saat_menguap": true,     // KANTUK selama menguap berlangsung
+    "menguap_per_menit_kantuk": 0,   // 0 = aturan laju menguap dimatikan
     "menguap_per_menit_kantuk": 3
   },
   "kalibrasi_detik": 4.0,
@@ -194,6 +199,12 @@ Semua ambang ada di `config.json` — bisa diubah tanpa menyentuh kode.
 **Terlalu sering false alarm?** Naikkan `durasi_terpejam_detik` (mis. 1.5) atau
 turunkan `rasio_mata_tertutup` (mis. 0.55).
 **Kurang sensitif?** Lakukan sebaliknya.
+
+**Mau alarm menguap bertahan lebih lama?** Isi `menguap_per_menit_kantuk`
+dengan angka > 0 (mis. 2). Status KANTUK lalu bertahan selama menguap masih
+masuk hitungan 60 detik terakhir — alarm ikut menyala walau mulut sudah
+tertutup dan mata sudah segar. Default-nya 0 (mati) karena perilaku itu
+terasa mengganggu saat diuji pada rekaman nyata.
 
 ---
 
