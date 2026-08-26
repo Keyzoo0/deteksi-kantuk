@@ -1,13 +1,31 @@
-"""Deteksi wajah & pengukuran mata/mulut dengan MediaPipe Face Mesh."""
+"""Deteksi wajah & pengukuran mata/mulut dengan MediaPipe Face Landmarker.
+
+Memakai **MediaPipe Tasks API** (`FaceLandmarker`), bukan `mp.solutions.face_mesh`
+yang lama: API lama sudah dihapus pada MediaPipe 1.0, sedangkan Tasks API jalan
+di MediaPipe 0.10.x maupun 1.x -- jadi kode yang sama dipakai di laptop dan di
+Raspberry Pi tanpa peduli versi paketnya.
+"""
 
 from __future__ import annotations
 
+import os
+import urllib.request
 from dataclasses import dataclass, field
+from pathlib import Path
+
+# Redam log bawaan MediaPipe/TensorFlow Lite. Harus diatur sebelum paketnya
+# diimpor (impor mediapipe sengaja ditunda sampai DetektorWajah dibuat).
+os.environ.setdefault("GLOG_minloglevel", "2")
+os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "3")
 
 import cv2
 import numpy as np
 
-# --- Indeks landmark Face Mesh (468 titik) -----------------------------------
+MODEL_URL = ("https://storage.googleapis.com/mediapipe-models/face_landmarker/"
+             "face_landmarker/float16/1/face_landmarker.task")
+MODEL_DEFAULT = Path(__file__).resolve().parent.parent / "model" / "face_landmarker.task"
+
+# --- Indeks landmark (sama dengan penomoran Face Mesh 468 titik) -------------
 # Enam titik EAR per mata, urutan: [sudut luar, atas1, atas2, sudut dalam,
 # bawah2, bawah1] -- sesuai rumus Eye Aspect Ratio (Soukupova & Cech, 2016).
 EAR_KIRI = (33, 160, 158, 133, 153, 144)
@@ -35,7 +53,18 @@ class HasilDeteksi:
     ear_kanan: float = 0.0
     mar: float = 0.0            # Mouth Aspect Ratio
     kotak_wajah: tuple[int, int, int, int] | None = None   # x, y, w, h
-    titik: np.ndarray | None = field(default=None, repr=False)  # (468, 2) piksel
+    titik: np.ndarray | None = field(default=None, repr=False)  # (N, 2) piksel
+
+
+def pastikan_model(path: Path = MODEL_DEFAULT) -> Path:
+    """Unduh berkas model bila belum ada (sekali saja, ~3,8 MB)."""
+    if path.exists() and path.stat().st_size > 100_000:
+        return path
+    path.parent.mkdir(parents=True, exist_ok=True)
+    print(f"Mengunduh model face_landmarker ke {path} ...")
+    urllib.request.urlretrieve(MODEL_URL, path)
+    print(f"Model siap ({path.stat().st_size / 1e6:.1f} MB).")
+    return path
 
 
 def _ear(titik: np.ndarray, idx: tuple[int, ...]) -> float:
@@ -58,28 +87,44 @@ def _mar(titik: np.ndarray) -> float:
 
 
 class DetektorWajah:
-    """Pembungkus tipis di atas MediaPipe Face Mesh (satu wajah terdekat)."""
+    """Pembungkus tipis di atas MediaPipe FaceLandmarker (satu wajah terdekat)."""
 
-    def __init__(self, kepercayaan_deteksi: float = 0.5,
-                 kepercayaan_lacak: float = 0.5) -> None:
+    def __init__(self, model: Path | str = MODEL_DEFAULT,
+                 kepercayaan: float = 0.5) -> None:
         import mediapipe as mp
+        from mediapipe.tasks.python import BaseOptions
+        from mediapipe.tasks.python import vision
 
-        self._mesh = mp.solutions.face_mesh.FaceMesh(
-            max_num_faces=1,
-            refine_landmarks=False,   # 468 titik cukup; hemat CPU di Raspberry Pi
-            min_detection_confidence=kepercayaan_deteksi,
-            min_tracking_confidence=kepercayaan_lacak,
+        self._mp = mp
+        model = pastikan_model(Path(model))
+        opsi = vision.FaceLandmarkerOptions(
+            base_options=BaseOptions(model_asset_path=str(model)),
+            running_mode=vision.RunningMode.VIDEO,   # pelacakan antar frame
+            num_faces=1,
+            min_face_detection_confidence=kepercayaan,
+            min_face_presence_confidence=kepercayaan,
+            min_tracking_confidence=kepercayaan,
+            output_face_blendshapes=False,           # tidak dipakai, hemat CPU
+            output_facial_transformation_matrixes=False,
         )
+        self._landmarker = vision.FaceLandmarker.create_from_options(opsi)
+        self._stempel_ms = 0
 
-    def proses(self, frame_bgr: np.ndarray) -> HasilDeteksi:
+    def proses(self, frame_bgr: np.ndarray, waktu_ms: int | None = None) -> HasilDeteksi:
         rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
-        rgb.flags.writeable = False
-        hasil = self._mesh.process(rgb)
-        if not hasil.multi_face_landmarks:
+        gambar = self._mp.Image(image_format=self._mp.ImageFormat.SRGB, data=rgb)
+
+        # Mode VIDEO menuntut stempel waktu yang selalu naik.
+        if waktu_ms is None or waktu_ms <= self._stempel_ms:
+            waktu_ms = self._stempel_ms + 1
+        self._stempel_ms = waktu_ms
+
+        hasil = self._landmarker.detect_for_video(gambar, waktu_ms)
+        if not hasil.face_landmarks:
             return HasilDeteksi(ada_wajah=False)
 
         tinggi, lebar = frame_bgr.shape[:2]
-        lm = hasil.multi_face_landmarks[0].landmark
+        lm = hasil.face_landmarks[0]
         titik = np.array([[p.x * lebar, p.y * tinggi] for p in lm], dtype=np.float32)
 
         kiri, kanan = _ear(titik, EAR_KIRI), _ear(titik, EAR_KANAN)
@@ -97,4 +142,4 @@ class DetektorWajah:
         )
 
     def tutup(self) -> None:
-        self._mesh.close()
+        self._landmarker.close()

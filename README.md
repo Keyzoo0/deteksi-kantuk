@@ -17,9 +17,15 @@ Status ditampilkan sebagai teks besar di jendela video: **AMAN** (hijau) atau
 | **PERCLOS** | % waktu mata tertutup dalam 60 detik terakhir | indikator kantuk paling baku di literatur |
 | **MAR** (Mouth Aspect Ratio) | bukaan bibir ÷ lebar mulut | mendeteksi menguap |
 
-Landmark wajah diambil dari **MediaPipe Face Mesh** (468 titik), jadi EAR dan MAR
-dihitung dari titik kelopak mata dan bibir yang sebenarnya — bukan tebakan dari
-kotak deteksi.
+Landmark wajah diambil dari **MediaPipe FaceLandmarker** (478 titik, penomoran
+sama dengan Face Mesh), jadi EAR dan MAR dihitung dari titik kelopak mata dan
+bibir yang sebenarnya — bukan tebakan dari kotak deteksi.
+
+Program memakai **MediaPipe Tasks API**, bukan `mp.solutions.face_mesh` yang lama.
+Alasannya: API lama sudah dihapus pada MediaPipe 1.0, sedangkan Tasks API jalan
+di MediaPipe 0.10.x maupun 1.x — jadi kode yang sama dipakai di laptop dan di
+Raspberry Pi tanpa peduli versi paketnya. Berkas model (`face_landmarker.task`,
+±3,8 MB) diunduh otomatis saat pertama kali dijalankan.
 
 ### Kalibrasi
 
@@ -69,10 +75,14 @@ sesaat (bicara) tidak dihitung sebagai menguap.
 ```
 
 MediaPipe menyediakan wheel `aarch64` untuk Python 3.11, jadi tidak perlu compile.
-Perkiraan performa pada 640×480: **±15–20 FPS** di Pi 5 — cukup untuk deteksi kantuk.
+
+Perkiraan performa: inferensi landmark memakan **±11 ms/frame** pada laptop x86
+yang dipakai menguji (≈90 FPS teoretis), sehingga FPS nyata ditentukan webcam —
+terukur **30 FPS** pada 640×480. Di Pi 5 inferensi lebih berat, perkirakan
+**±15–20 FPS**, dan itu sudah cukup: PERCLOS memakai jendela 60 detik.
 
 Tips di Pi 5:
-- Pakai webcam USB yang mendukung **MJPG** (sudah diminta otomatis oleh program).
+- Pakai webcam USB yang mendukung **MJPG** (dipakai program secara default).
 - Kalau berat, turunkan resolusi di `config.json` ke `320×240`.
 - Pastikan pendingin/heatsink terpasang bila dipakai lama.
 
@@ -97,11 +107,15 @@ Tombol saat jendela aktif:
 | `c` | kalibrasi ulang |
 | `d` | tampilkan/sembunyikan landmark |
 
-Bingung webcam mana yang aktif:
+Bingung webcam mana yang aktif, atau gambar terlihat rusak:
 
 ```bash
-.venv/bin/python tools/cek_kamera.py
+.venv/bin/python tools/cek_kamera.py   # ukur FPS nyata + frame robek tiap format
+.venv/bin/python tools/uji_logika.py   # uji logika penilaian kantuk (tanpa kamera)
 ```
+
+`cek_kamera.py` mencoba tiap kombinasi format/resolusi lalu menyarankan yang
+paling bersih, lengkap dengan potongan `config.json` yang tinggal disalin.
 
 ---
 
@@ -114,6 +128,7 @@ Semua ambang ada di `config.json` — bisa diubah tanpa menyentuh kode.
   "kamera": {
     "sumber": "0",            // index webcam atau path file video
     "lebar": 640, "tinggi": 480, "fps": 30,
+    "fourcc": "MJPG",         // "MJPG" | "YUYV" | "" (biarkan driver)
     "flip_horizontal": true   // tampilan cermin
   },
   "ambang": {
@@ -137,6 +152,18 @@ turunkan `rasio_mata_tertutup` (mis. 0.55).
 
 ---
 
+## Kalau hasilnya tidak bagus
+
+| Gejala | Penyebab & solusi |
+|---|---|
+| Gambar tampak **robek**, tersusun dari beberapa potongan | Webcam kehabisan bandwidth USB. Jalankan `tools/cek_kamera.py`, lalu pakai format/resolusi yang disarankan (biasanya MJPG, atau turun ke 320×240). Pada pengujian di sini YUYV 640×480 merobek 21 dari 30 frame, MJPG hanya 4. |
+| Banyak baris `Corrupt JPEG data` di terminal | Sama seperti di atas, tapi versi MJPG — sebagian data frame hilang. Program tetap jalan; ganti ke `"fourcc": "YUYV"` bila mengganggu. |
+| Wajah sering tidak terdeteksi | Cahaya kurang, wajah terlalu jauh/miring, atau frame robek. Pastikan wajah menghadap kamera dan cukup terang. |
+| **KANTUK** muncul padahal melek | Baseline terlanjur diambil saat mata setengah menutup. Tekan `c` untuk kalibrasi ulang sambil menatap kamera. |
+| FPS rendah padahal CPU santai | Batasnya di webcam, bukan program (inferensi hanya ±11 ms). Cek dengan `tools/cek_kamera.py`. |
+
+---
+
 ## Struktur project
 
 ```
@@ -148,7 +175,9 @@ deteksi-kantuk/
 │   ├── deteksi.py    # MediaPipe Face Mesh -> EAR & MAR
 │   ├── metrik.py     # kalibrasi, PERCLOS, hitung kedip & menguap, level kantuk
 │   └── tampilan.py   # overlay OpenCV (kontur mata/mulut, panel metrik, banner)
-├── tools/cek_kamera.py
+├── tools/
+│   ├── cek_kamera.py   # ukur FPS nyata & frame robek tiap format kamera
+│   └── uji_logika.py   # uji penilaian kantuk dengan frame sintetis
 ├── config.json
 ├── setup.sh / setup_raspi.sh / run.sh
 └── requirements.txt

@@ -20,4 +20,7 @@ echo ""
 .venv/bin/python -c "import cv2, mediapipe; print('OpenCV', cv2.__version__, '| MediaPipe', mediapipe.__version__)"
 echo ">> Cek webcam terdeteksi:"
 v4l2-ctl --list-devices || true
+echo ">> Mengunduh model face_landmarker (sekali saja, ~3,8 MB)..."
+.venv/bin/python -c "from src.deteksi import pastikan_model; pastikan_model()"
+
 echo ">> Selesai. Jalankan dengan: ./run.sh"

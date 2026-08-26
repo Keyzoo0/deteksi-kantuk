@@ -26,7 +26,7 @@ echo ">> Interpreter: $PY ($("$PY" --version))"
 rm -rf .venv
 if command -v uv >/dev/null 2>&1; then
   uv venv --python "$PY" .venv
-  VIRTUAL_ENV=.venv uv pip install -r requirements.txt
+  uv pip install --python .venv/bin/python -r requirements.txt
 else
   "$PY" -m venv .venv
   .venv/bin/python -m pip install --upgrade pip
@@ -35,4 +35,7 @@ fi
 
 echo ""
 .venv/bin/python -c "import cv2, mediapipe; print('OpenCV', cv2.__version__, '| MediaPipe', mediapipe.__version__)"
+echo ">> Mengunduh model face_landmarker (sekali saja, ~3,8 MB)..."
+.venv/bin/python -c "from src.deteksi import pastikan_model; pastikan_model()"
+
 echo ">> Selesai. Jalankan dengan: ./run.sh"

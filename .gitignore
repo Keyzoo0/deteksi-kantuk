@@ -3,6 +3,7 @@ __pycache__/
 *.py[cod]
 .python-version
 rekaman/
+model/*.task
 *.mp4
 *.avi
 .DS_Store

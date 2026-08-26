@@ -35,7 +35,7 @@ def _teks(frame: np.ndarray, teks: str, xy: tuple[int, int], skala: float = 0.5,
 def _kontur(frame: np.ndarray, titik: np.ndarray, idx: tuple[int, ...],
             warna: tuple[int, int, int]) -> None:
     pts = titik[list(idx)].astype(np.int32).reshape(-1, 1, 2)
-    cv2.polylines(frame, [pts], isClosed=True, color=warna, thickness=1, lineType=cv2.LINE_AA)
+    cv2.polylines(frame, [pts], isClosed=True, color=warna, thickness=2, lineType=cv2.LINE_AA)
 
 
 def _bar(frame: np.ndarray, x: int, y: int, w: int, h: int, nilai: float,
@@ -91,7 +91,7 @@ def gambar_overlay(frame: np.ndarray, hasil: HasilDeteksi, st: Status,
             cv2.rectangle(frame, (x, y), (x + w, y + h), warna_status, 2)
 
     # --- panel metrik kiri atas ---
-    _panel(frame, 8, 8, 232, 132)
+    _panel(frame, 8, 8, 236, 156)
     baris = [
         (f"EAR   {st.ear_norm * 100:5.0f}% baseline",
          MERAH if st.mata_tertutup else PUTIH),
@@ -104,6 +104,7 @@ def gambar_overlay(frame: np.ndarray, hasil: HasilDeteksi, st: Status,
     for i, (t, warna) in enumerate(baris):
         _teks(frame, t, (18, 32 + i * 20), 0.46, warna)
     _bar(frame, 18, 122, 210, 8, st.ear_norm, 0.62, MERAH if st.mata_tertutup else HIJAU)
+    _teks(frame, "q keluar | c kalibrasi | d debug", (18, 150), 0.4, ABU)
 
     # --- banner status bawah ---
     _panel(frame, 0, tinggi - 74, lebar, 74, alpha=0.6)
@@ -122,4 +123,3 @@ def gambar_overlay(frame: np.ndarray, hasil: HasilDeteksi, st: Status,
 
     # --- info pojok kanan atas ---
     _teks(frame, f"{fps:4.1f} FPS", (lebar - 88, 26), 0.5, PUTIH)
-    _teks(frame, "q keluar | c kalibrasi | d debug", (10, tinggi - 84), 0.42, ABU)

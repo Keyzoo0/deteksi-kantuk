@@ -1,4 +1,8 @@
 # Python 3.9 - 3.12 (mediapipe belum menyediakan wheel untuk 3.13+)
+#
+# Kode memakai MediaPipe Tasks API (FaceLandmarker), yang tersedia baik di
+# mediapipe 0.10.x (mis. Raspberry Pi OS Bookworm) maupun 1.x. API lama
+# mp.solutions.face_mesh sengaja tidak dipakai karena sudah dihapus di 1.0.
 mediapipe>=0.10.9
 opencv-python>=4.8
 numpy>=1.24
