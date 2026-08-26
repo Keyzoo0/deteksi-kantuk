@@ -95,9 +95,10 @@ def gambar_overlay(frame: np.ndarray, hasil: HasilDeteksi, st: Status,
     baris = [
         (f"EAR   {st.ear_norm * 100:5.0f}% baseline",
          MERAH if st.mata_tertutup else PUTIH),
-        (f"MAR   {st.mar_norm * 100:5.0f}% baseline",
+        (f"MAR   {st.mar:5.2f}  (menguap >{st.ambang_mar:.2f})",
          KUNING if st.sedang_menguap else PUTIH),
-        (f"PERCLOS {st.perclos * 100:4.0f}%", PUTIH),
+        (f"PERCLOS {st.perclos * 100:4.0f}%" + ("" if st.perclos_matang else "  (belum matang)"),
+         PUTIH if st.perclos_matang else ABU),
         (f"Kedip   {st.kedip_total:3d}  ({st.kedip_per_menit}/menit)", PUTIH),
         (f"Menguap {st.menguap_total:3d}  ({st.menguap_per_menit}/menit)", PUTIH),
     ]

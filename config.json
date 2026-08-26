@@ -12,8 +12,10 @@
     "durasi_terpejam_detik": 1.2,
     "perclos_window_detik": 60.0,
     "perclos_kantuk": 0.28,
+    "perclos_min_rentang": 30.0,
     "durasi_kedip_maks": 0.5,
-    "rasio_mulut_menguap": 1.9,
+    "mar_menguap": 0.5,
+    "mar_margin_baseline": 0.3,
     "durasi_menguap_detik": 0.9,
     "menguap_per_menit_kantuk": 3
   },
