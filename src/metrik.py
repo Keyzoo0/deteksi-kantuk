@@ -208,7 +208,11 @@ class PenilaiKantuk:
         # kedipan panjang di detik-detik awal bisa terbaca 50%.
         if st.perclos_matang and st.perclos >= a.perclos_kantuk:
             alasan.append(f"PERCLOS {st.perclos * 100:.0f}%")
-        if st.menguap_per_menit >= a.menguap_per_menit_kantuk:
+        # Menguap menandai kantuk selama menguapnya berlangsung; begitu mulut
+        # menutup, penilaian kembali bergantung pada mata.
+        if a.kantuk_saat_menguap and st.sedang_menguap:
+            alasan.append("sedang menguap")
+        if a.menguap_per_menit_kantuk > 0 and st.menguap_per_menit >= a.menguap_per_menit_kantuk:
             alasan.append(f"menguap {st.menguap_per_menit}x/menit")
 
         st.level = KANTUK if alasan else AMAN
