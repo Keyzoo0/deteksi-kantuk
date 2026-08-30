@@ -1,6 +1,6 @@
 {
   "kamera": {
-    "sumber": "2",
+    "sumber": "auto",
     "merek": "logitech",
     "lebar": 640,
     "tinggi": 480,
@@ -30,6 +30,25 @@
     "wajah_hilang_detik": 3.0,
     "jeda_ulang_detik": 5.0,
     "pemutar": ""
+  },
+  "alarm": {
+    "l1_ulang_detik": 5.0,
+    "l2_setelah_detik": 10.0,
+    "l2_setelah_l1_berulang": 3,
+    "jendela_l1_detik": 600.0,
+    "l2_ulang_detik": 4.0,
+    "l3_setelah_detik": 10.0,
+    "l3_ulang_kirim_detik": 300.0,
+    "jeda_setelah_akui_detik": 60.0
+  },
+  "tombol": {
+    "aktif": true,
+    "pin": 21,
+    "pin_led": 27,
+    "ketuk_maks_detik": 1.0,
+    "tahan_detik": 3.0,
+    "tahan_lama_detik": 8.0,
+    "debounce_detik": 0.05
   },
   "kalibrasi_detik": 4.0,
   "mati_tanpa_wajah_detik": 60.0,

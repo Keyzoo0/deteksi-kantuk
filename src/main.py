@@ -2,16 +2,21 @@
 
 Sistem berjalan sebagai tiga keadaan:
 
-    SIAGA      -- sapaan lisan, kamera belum menyala, menunggu tombol SPASI.
+    SIAGA      -- sapaan lisan, kamera belum menyala, menunggu tombol ditekan.
     KALIBRASI  -- kamera menyala; selama wajah belum masuk bingkai pengguna
                   dituntun suara. Begitu wajah terlihat, instruksi kalibrasi
                   diucapkan lalu baseline EAR/MAR direkam.
     MONITOR    -- penilaian kantuk tiap frame + peringatan lisan. Bila wajah
                   hilang lebih dari `mati_tanpa_wajah_detik`, sistem mati
-                  sendiri dan kembali ke SIAGA (tekan SPASI untuk mulai lagi).
+                  sendiri dan kembali ke SIAGA (ketuk tombol untuk mulai lagi).
 
 Jalankan:  python -m src.main            (dari folder project)
-Tombol  :  spasi mulai | q keluar | c kalibrasi ulang | d tampilkan landmark
+Tombol fisik : ketuk = matikan alarm | tahan 3 dtk = nyalakan/matikan sistem |
+               tahan 8 dtk = matikan Raspberry Pi
+Papan ketik  : spasi = ketuk | c = tahan 3 dtk | q keluar | d landmark
+
+Menyalakan sistem selalu diawali kalibrasi, jadi mematikan lalu menyalakan
+lagi sekaligus berfungsi sebagai kalibrasi ulang -- tidak perlu tombol sendiri.
 """
 
 from __future__ import annotations
@@ -27,13 +32,18 @@ import cv2
 from .config import Config
 from .deteksi import DetektorWajah
 from .kamera import (buka_kamera, cari_perangkat, info_kamera, pastikan_kamera_ada,
-                     sambung_ulang)
+                     perangkat_merek, sambung_ulang)
 from .metrik import KANTUK, Kalibrator, PenilaiKantuk, Status
 from .senyap import redam_pustaka_c, redam_stderr, siapkan_font_qt
-from .suara import (ARAHKAN, MATI, MENGANTUK, MULAI_KALIBRASI, SALAM, SIAP,
-                    AsistenSuara)
+from .alarm import (AKUI, BUNYI_L1, BUNYI_L2, KIRIM_L3, MENEPI, MULAI_L2, SELESAI,
+                    L2, TENANG, TanggaAlarm)
+from .suara import (ARAHKAN, BERHENTI, BIP, BIP_GANDA, DIAKUI, ISTIRAHAT, MATI,
+                    MENGANTUK, MULAI_KALIBRASI, SALAM, SIAP, SIRENE, TEKAN_TOMBOL,
+                    TERKIRIM, AsistenSuara)
 from .tampilan import gambar_kalibrasi, gambar_overlay, layar_siaga
-from .tombol import PembacaTombol
+from .tombol_gpio import (ISYARAT_TAHAN, ISYARAT_TAHAN_LAMA, KEDIP_CEPAT,
+                          KEDIP_LAMBAT, KETUK, NYALA, PADAM, TAHAN, TAHAN_LAMA,
+                          TombolFisik)
 
 AKAR = Path(__file__).resolve().parent.parent
 JUDUL = "Deteksi Rasa Kantuk"
@@ -79,6 +89,8 @@ class Sesi:
     t_akhir: float = 0.0
     diumumkan: bool = False              # instruksi kalibrasi sudah diucapkan
     hilang_sejak: float | None = None    # kapan wajah mulai tidak terlihat
+    alarm: TanggaAlarm | None = None     # tangga alarm 3 tingkat
+    alarm_bunyi: bool = False            # sirene tingkat 2 sedang berbunyi
 
 
 def cetak_status(st: Status, fps: float, catatan: str = "") -> None:
@@ -121,7 +133,8 @@ def _jalankan(arg: argparse.Namespace) -> int:
     # diambil dari timeline video, bukan jam dinding, supaya durasi kalibrasi
     # dan jendela PERCLOS tetap benar walau pemrosesan lebih cepat/lambat
     # daripada waktu nyata. Efek cermin juga tidak dipakai.
-    dari_berkas = not str(cfg.kamera.sumber).isdigit()
+    sumber = str(cfg.kamera.sumber).strip().lower()
+    dari_berkas = not (sumber == "auto" or sumber.lstrip("-").isdigit())
     if dari_berkas:
         cfg.kamera.flip_horizontal = False
 
@@ -144,7 +157,14 @@ def _jalankan(arg: argparse.Namespace) -> int:
 
     detektor = DetektorWajah()
     asisten = AsistenSuara(cfg.suara, AKAR)
-    print(f"Kamera   : {cari_perangkat(int(cfg.kamera.sumber)).label() if not dari_berkas else cfg.kamera.sumber}")
+    if dari_berkas:
+        print(f"Kamera   : berkas {cfg.kamera.sumber}")
+    else:
+        # Nomor index di config hanya pilihan pertama; yang benar-benar dipakai
+        # baru diketahui saat kamera dibuka, jadi di sini yang ditampilkan
+        # adalah kandidat yang memang terpasang.
+        calon = perangkat_merek(cfg.kamera.merek)
+        print(f"Kamera   : {', '.join(p.label() for p in calon) or '(tidak ada)'}")
     print(f"Suara    : {asisten.keterangan}")
     if asisten.aktif:
         print(f"           kantuk: terpejam >{cfg.suara.terpejam_detik:.0f} detik atau "
@@ -154,19 +174,23 @@ def _jalankan(arg: argparse.Namespace) -> int:
     print(f"Kalibrasi: {cfg.kalibrasi_detik:.0f} detik setelah wajah terlihat")
     print(f"Mati auto: wajah hilang >{cfg.mati_tanpa_wajah_detik:.0f} detik saat monitoring")
     print(f"Mode     : {'jendela OpenCV' if tampilkan else 'headless (terminal)'}")
-    print("Tombol   : spasi mulai | q keluar | c kalibrasi ulang | d debug\n")
+    print("Tombol   : ketuk = matikan alarm | tahan 3 dtk = nyalakan/matikan "
+          "sistem | tahan 8 dtk = matikan Pi\n")
 
-    with PembacaTombol() as tombol_terminal:
-        # Tanpa terminal interaktif (mis. keluaran dialihkan ke berkas atau
-        # dijalankan systemd) tombol SPASI tidak mungkin ditekan, jadi sistem
-        # langsung menyala. Sumber berkas video juga tidak perlu ditunggu.
-        auto = arg.langsung or dari_berkas or (not tampilkan and not tombol_terminal.aktif)
-        return _loop(arg, cfg, detektor, asisten, tombol_terminal,
-                     tampilkan, dari_berkas, auto)
+    tombol = TombolFisik(cfg.tombol)
+    print(f"Tombol   : {tombol.keterangan}")
+    # Tanpa tombol fisik maupun jendela (mis. dijalankan systemd di Pi yang
+    # tombolnya belum terpasang) tidak ada cara menekan apa pun, jadi sistem
+    # langsung menyala. Sumber berkas video juga tidak perlu ditunggu.
+    auto = arg.langsung or dari_berkas or (not tampilkan and not tombol.ada)
+    try:
+        return _loop(arg, cfg, detektor, asisten, tombol, tampilkan, dari_berkas, auto)
+    finally:
+        tombol.tutup()
 
 
 def _loop(arg, cfg: Config, detektor: DetektorWajah, asisten: AsistenSuara,
-          tombol_terminal: PembacaTombol, tampilkan: bool, dari_berkas: bool,
+          tombol: TombolFisik, tampilkan: bool, dari_berkas: bool,
           auto: bool) -> int:
     keadaan = SIAGA
     cap: cv2.VideoCapture | None = None
@@ -182,20 +206,44 @@ def _loop(arg, cfg: Config, detektor: DetektorWajah, asisten: AsistenSuara,
     kode = 0
     salam_diucapkan = False
 
-    def tombol_ditekan(frame) -> int:
-        """Tampilkan frame (bila perlu) lalu baca satu tombol; -1 = tidak ada."""
+    def tampilkan_frame(frame) -> int:
+        """Tampilkan frame (bila ada jendela) dan kembalikan tombol papan ketik."""
         nonlocal jendela_dibuat
-        if tampilkan:
-            if jendela_dibuat:
+        if not tampilkan:
+            return -1
+        if jendela_dibuat:
+            cv2.imshow(JUDUL, frame)
+        else:
+            # Pembuatan jendela pertama memicu beberapa pesan Qt/X11 yang tidak
+            # ada hubungannya dengan program.
+            with redam_stderr():
                 cv2.imshow(JUDUL, frame)
-            else:
-                # Pembuatan jendela pertama memicu beberapa pesan Qt/X11 yang
-                # tidak ada hubungannya dengan program.
-                with redam_stderr():
-                    cv2.imshow(JUDUL, frame)
-                jendela_dibuat = True
-            return cv2.waitKey(1) & 0xFF
-        return tombol_terminal.baca()
+            jendela_dibuat = True
+        return cv2.waitKey(1) & 0xFF
+
+    def isyarat(pesan: str) -> None:
+        """Bunyi pendek penanda ambang tahanan tercapai.
+
+        Suara yang sedang berjalan sengaja dipotong: alat ini tidak punya
+        layar maupun LED yang pasti terpasang, jadi bip inilah satu-satunya
+        cara pengendara tahu tahanannya sudah cukup. Tanpa ini dia akan
+        menahan terus dan tanpa sadar memicu ambang berikutnya.
+        """
+        asisten.diam()
+        asisten.ucap(pesan, paksa=True)
+
+    def baca_tombol(frame, t: float) -> str | None:
+        """Satu peristiwa tombol, dari GPIO maupun papan ketik (untuk uji)."""
+        kunci = tampilkan_frame(frame)
+        if kunci in (ord("q"), ESC):
+            return "keluar"
+        if kunci == SPASI:
+            return KETUK
+        if kunci == ord("c"):
+            return TAHAN
+        if kunci == ord("d"):
+            return "debug"
+        return tombol.periksa(t)
 
     def nyalakan() -> bool:
         """Buka kamera dan mulai sesi baru. False bila kameranya tidak ada."""
@@ -208,12 +256,15 @@ def _loop(arg, cfg: Config, detektor: DetektorWajah, asisten: AsistenSuara,
         fps_berkas = cap.get(cv2.CAP_PROP_FPS) or 25.0
         gagal_baca = 0
         t_lalu = time.monotonic()
-        sesi = Sesi(Kalibrator(cfg.kalibrasi_detik))
+        sesi = Sesi(Kalibrator(cfg.kalibrasi_detik), alarm=TanggaAlarm(cfg.alarm))
         keadaan = KALIBRASI
-        print(f"\n[sistem] menyala -- {info_kamera(cap)}")
+        # Sumber berkas tidak punya perangkat untuk dicari namanya.
+        asal = (f"berkas {cfg.kamera.sumber}" if dari_berkas
+                else cari_perangkat(int(cfg.kamera.sumber)).label())
+        print(f"\n[sistem] menyala -- {asal} -> {info_kamera(cap)}")
         return True
 
-    def matikan(alasan: str) -> None:
+    def matikan(alasan: str, sapa_lagi: bool = True) -> None:
         """Akhiri sesi: cetak ringkasan, lepas kamera, kembali ke layar siaga."""
         nonlocal cap, sesi, keadaan, salam_diucapkan
         print(f"\n[sistem] {alasan}")
@@ -224,7 +275,10 @@ def _loop(arg, cfg: Config, detektor: DetektorWajah, asisten: AsistenSuara,
             cap = None
         sesi = None
         keadaan = SIAGA
-        salam_diucapkan = False
+        # Sapaan panjang tidak diulang kalau pengguna sendiri yang mematikan:
+        # dia baru saja mendengar "sistem dimatikan, silakan beristirahat".
+        salam_diucapkan = not sapa_lagi
+        tombol.pola_led(KEDIP_LAMBAT)
 
     try:
         while True:
@@ -239,15 +293,27 @@ def _loop(arg, cfg: Config, detektor: DetektorWajah, asisten: AsistenSuara,
                     continue
                 if not salam_diucapkan:
                     asisten.ucap(SALAM, antre=True, paksa=True)
+                    tombol.pola_led(KEDIP_LAMBAT)
                     salam_diucapkan = True
                     if not tampilkan:
-                        sys.stdout.write("\r  SIAGA -- tekan SPASI untuk memulai sistem"
+                        sys.stdout.write("\r  SIAGA -- tahan tombol 3 detik untuk memulai"
                                          "        ")
                         sys.stdout.flush()
-                tombol = tombol_ditekan(layar_siaga(cfg.kamera.lebar, cfg.kamera.tinggi))
-                if tombol in (ord("q"), ESC):
+                peristiwa = baca_tombol(
+                    layar_siaga(cfg.kamera.lebar, cfg.kamera.tinggi,
+                                "Tahan tombol 3 detik untuk memulai"),
+                    time.monotonic())
+                if peristiwa == "keluar":
                     break
-                if tombol == SPASI:
+                if peristiwa == TAHAN_LAMA:
+                    _matikan_pi(asisten)
+                    break
+                if peristiwa == ISYARAT_TAHAN:
+                    tombol.pola_led(KEDIP_CEPAT)
+                    isyarat(BIP)
+                if peristiwa == ISYARAT_TAHAN_LAMA:
+                    isyarat(BIP_GANDA)
+                if peristiwa == TAHAN:
                     asisten.diam()          # potong sapaan, langsung bekerja
                     if not nyalakan():
                         salam_diucapkan = False
@@ -322,6 +388,7 @@ def _loop(arg, cfg: Config, detektor: DetektorWajah, asisten: AsistenSuara,
                 st = sesi.penilai.perbarui(hasil, t)      # type: ignore[union-attr]
                 _catat_episode(sesi, st, t)
                 habis, catatan = _tahap_monitor(cfg, sesi, asisten, st, t, dari_berkas)
+                _bunyikan_alarm(cfg, sesi, asisten, tombol, st, t)
                 if habis:
                     matikan(f"wajah hilang lebih dari "
                             f"{cfg.mati_tanpa_wajah_detik:.0f} detik, sistem dimatikan.")
@@ -336,17 +403,36 @@ def _loop(arg, cfg: Config, detektor: DetektorWajah, asisten: AsistenSuara,
             if perekam is not None:
                 perekam.write(frame)
 
-            tombol = tombol_ditekan(frame)
-            if tombol in (ord("q"), ESC):
+            peristiwa = baca_tombol(frame, t)
+            if peristiwa == "keluar":
                 break
-            if tombol == ord("c"):
-                sesi.kalibrator = Kalibrator(cfg.kalibrasi_detik)
-                sesi.penilai = None
-                sesi.diumumkan = False
-                keadaan = KALIBRASI
-                print("\nKalibrasi ulang...")
-            if tombol == ord("d"):
+            elif peristiwa == "debug":
                 debug = not debug
+            elif peristiwa == KETUK:
+                # Selagi alarm berbunyi, ketukan berarti "saya sadar" dan itu
+                # satu-satunya cara mematikan alarm tingkat 2 ke atas.
+                if sesi.alarm.tingkat:
+                    print(f"\n[alarm] tombol ditekan pada tingkat "
+                          f"{sesi.alarm.tingkat} -- alarm dimatikan")
+                for e in sesi.alarm.ketuk(t):
+                    _mainkan(asisten, e)
+                sesi.alarm_bunyi = False
+            elif peristiwa == ISYARAT_TAHAN:
+                tombol.pola_led(KEDIP_CEPAT)
+                isyarat(BIP)
+            elif peristiwa == ISYARAT_TAHAN_LAMA:
+                isyarat(BIP_GANDA)
+            elif peristiwa == TAHAN:
+                # Pengendara ingin berhenti/istirahat. Kamera dilepas dan
+                # sistem kembali siaga; menyalakannya lagi otomatis mengulang
+                # kalibrasi, jadi tidak ada tombol kalibrasi tersendiri.
+                asisten.ucap(ISTIRAHAT, antre=True, paksa=True)
+                matikan("tombol ditahan -- sistem dimatikan untuk istirahat.",
+                        sapa_lagi=False)
+                continue
+            elif peristiwa == TAHAN_LAMA:
+                _matikan_pi(asisten)
+                break
     except KeyboardInterrupt:
         print("\nDihentikan pengguna.")
     finally:
@@ -419,6 +505,63 @@ def _tahap_monitor(cfg: Config, sesi: Sesi, asisten: AsistenSuara, st: Status,
     if not dari_berkas and lama >= cfg.suara.wajah_hilang_detik:
         return False, f"MATI DALAM {sisa:.0f} DETIK"
     return False, ""
+
+
+# Peristiwa tangga alarm -> pesan yang dibunyikan. Sirene dan "tekan tombol"
+# diantre berpasangan supaya nada peringatan selalu diikuti instruksinya.
+_SUARA_ALARM = {
+    BUNYI_L1: (MENGANTUK,),
+    MULAI_L2: (SIRENE, TEKAN_TOMBOL),
+    BUNYI_L2: (SIRENE, TEKAN_TOMBOL),
+    KIRIM_L3: (TERKIRIM,),
+    AKUI: (DIAKUI,),
+    MENEPI: (BERHENTI,),
+    SELESAI: (),
+}
+
+
+def _mainkan(asisten: AsistenSuara, peristiwa: str) -> None:
+    for pesan in _SUARA_ALARM.get(peristiwa, ()):
+        asisten.ucap(pesan, antre=True, paksa=True)
+
+
+def _bunyikan_alarm(cfg: Config, sesi: Sesi, asisten: AsistenSuara,
+                    tombol: TombolFisik, st: Status, t: float) -> None:
+    """Jalankan tangga alarm satu langkah dan wujudkan hasilnya jadi suara/LED."""
+    assert sesi.alarm is not None
+    mengantuk = st.ada_wajah and (
+        st.durasi_tertutup >= cfg.suara.terpejam_detik
+        or st.durasi_menguap >= cfg.suara.menguap_detik)
+    sebelum = sesi.alarm.tingkat
+    for e in sesi.alarm.perbarui(mengantuk, t, asisten.perangkat_hidup()):
+        if e == KIRIM_L3:
+            # Fase 3 akan mengirim posisi + foto ke kerabat lewat Telegram.
+            print(f"\n[alarm] TINGKAT 3 -- notifikasi kerabat "
+                  f"(kejadian ke-{sesi.alarm.kejadian_l3}) belum terpasang.")
+        _mainkan(asisten, e)
+    if sesi.alarm.tingkat != sebelum:
+        print(f"\n[alarm] tingkat {sebelum} -> {sesi.alarm.tingkat}")
+    sesi.alarm_bunyi = sesi.alarm.tingkat >= L2
+    tombol.pola_led(KEDIP_CEPAT if sesi.alarm.tingkat >= L2
+                    else (NYALA if sesi.alarm.tingkat == TENANG else KEDIP_LAMBAT))
+
+
+def _matikan_pi(asisten: AsistenSuara) -> None:
+    """Matikan Raspberry Pi dengan aman (tombol ditahan 8 detik)."""
+    import subprocess
+    print("\n[sistem] tombol ditahan lama -- mematikan Raspberry Pi...")
+    asisten.ucap(MATI, antre=True, paksa=True)
+    for _ in range(60):                    # biarkan pesannya selesai berbunyi
+        if not asisten.sedang_bicara:
+            break
+        time.sleep(0.1)
+    for perintah in (["sudo", "-n", "poweroff"], ["systemctl", "poweroff"]):
+        try:
+            if subprocess.run(perintah, timeout=10).returncode == 0:
+                return
+        except (OSError, subprocess.SubprocessError):
+            continue
+    print("[sistem] gagal mematikan otomatis; matikan manual lewat SSH.")
 
 
 def _catat_episode(sesi: Sesi, st: Status, t: float) -> None:

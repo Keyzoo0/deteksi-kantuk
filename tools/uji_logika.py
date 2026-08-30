@@ -16,7 +16,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from src.config import AmbangConfig, Config              # noqa: E402
+from src.alarm import (AKUI, BUNYI_L1, BUNYI_L2, KIRIM_L3, MULAI_L2,   # noqa: E402
+                       SELESAI, L1, L2, L3, TENANG, TanggaAlarm)
+from src.config import AlarmConfig, AmbangConfig, Config  # noqa: E402
+from src.tombol_gpio import (ISYARAT_TAHAN, KETUK, TAHAN,   # noqa: E402
+                             TAHAN_LAMA, PenafsirTombol)
 from src.deteksi import HasilDeteksi                     # noqa: E402
 from src.main import Sesi, _tahap_kalibrasi, _tahap_monitor   # noqa: E402
 from src.metrik import (AMAN, KANTUK, Baseline, Kalibrator,   # noqa: E402
@@ -205,6 +209,68 @@ def main() -> int:
         t += LANGKAH
     hasil.append(uji("baseline terekam setelah instruksi selesai",
                      sesi.penilai is not None, f"selesai pada t={t:.1f}s"))
+
+    print("\n9. Tangga alarm: naik bertingkat, hanya tombol yang menghentikan")
+    ca = AlarmConfig()
+    tangga = TanggaAlarm(ca)
+
+    def jalan(tangga, t0, detik, mengantuk, suara=True, langkah=0.5):
+        t, catat = t0, []
+        for _ in range(int(detik / langkah)):
+            catat += tangga.perbarui(mengantuk, t, suara)
+            t += langkah
+        return t, catat
+
+    t, catat = jalan(tangga, 0.0, 6.0, True)
+    hasil.append(uji("mengantuk 6 dtk: tingkat 1, bunyi berkala",
+                     tangga.tingkat == L1 and catat.count(BUNYI_L1) == 2, f"{catat}"))
+    t, catat = jalan(tangga, t, 6.0, True)
+    hasil.append(uji("lewat 10 dtk: naik ke tingkat 2",
+                     tangga.tingkat == L2 and MULAI_L2 in catat, f"tingkat={tangga.tingkat}"))
+    t, catat = jalan(tangga, t, 6.0, False)     # kantuk "hilang", tombol belum ditekan
+    hasil.append(uji("kantuk hilang tidak mematikan tingkat 2",
+                     tangga.tingkat >= L2, f"tingkat={tangga.tingkat}"))
+    t, catat = jalan(tangga, t, 8.0, True)
+    hasil.append(uji("tingkat 2 tanpa tombol: naik ke tingkat 3",
+                     tangga.tingkat == L3 and KIRIM_L3 in catat, f"{catat}"))
+    hasil.append(uji("ketukan mematikan alarm dan mengembalikan ke nol",
+                     tangga.ketuk(t) == [AKUI] and tangga.tingkat == TENANG))
+    t, catat = jalan(tangga, t, 30.0, True)
+    hasil.append(uji("jeda 60 dtk setelah diakui: alarm diam", catat == [], f"{catat}"))
+    t, catat = jalan(tangga, t + 40.0, 2.0, True)
+    hasil.append(uji("setelah jeda habis: mulai lagi dari tingkat 1",
+                     tangga.tingkat == L1 and BUNYI_L1 in catat, f"tingkat={tangga.tingkat}"))
+
+    print("\n10. Alarm melompat ke tingkat 3 bila perangkat suara mati")
+    tangga = TanggaAlarm(ca)
+    t, _ = jalan(tangga, 0.0, 12.0, True)              # sampai tingkat 2
+    hasil.append(uji("tingkat 2 tercapai", tangga.tingkat == L2))
+    t, catat = jalan(tangga, t, 1.0, True, suara=False)
+    hasil.append(uji("speaker mati: langsung tingkat 3 tanpa menunggu 10 dtk",
+                     tangga.tingkat == L3 and KIRIM_L3 in catat, f"{catat}"))
+
+    print("\n11. Kantuk sesaat reda sendiri sebelum sempat naik tingkat")
+    tangga = TanggaAlarm(ca)
+    t, catat = jalan(tangga, 0.0, 4.0, True)
+    t, catat = jalan(tangga, t, 2.0, False)
+    hasil.append(uji("kembali tenang tanpa perlu tombol",
+                     tangga.tingkat == TENANG and SELESAI in catat, f"{catat}"))
+
+    print("\n12. Tombol: aksi hanya saat dilepas, isyarat selagi ditahan")
+    def tekan(pola):
+        pen = PenafsirTombol(); keluar = []
+        for ditekan, t in pola:
+            e = pen.perbarui(ditekan, t)
+            if e:
+                keluar.append(e)
+        return keluar
+    hasil.append(uji("ketuk 0,3 dtk", tekan([(True, 0.0), (True, 0.3), (False, 0.35)]) == [KETUK]))
+    hasil.append(uji("lepas di 2 dtk diabaikan (rentang ambigu)",
+                     tekan([(True, 0.0), (True, 2.0), (False, 2.1)]) == []))
+    hasil.append(uji("tahan 4 dtk: isyarat lalu aksi saat dilepas",
+                     tekan([(True, 0.0), (True, 3.1), (False, 4.0)]) == [ISYARAT_TAHAN, TAHAN]))
+    hasil.append(uji("tahan 9 dtk tidak ikut memicu aksi tahan 3 dtk",
+                     tekan([(True, 0.0), (True, 3.1), (True, 8.1), (False, 9.0)])[-1] == TAHAN_LAMA))
 
     lulus = sum(hasil)
     print(f"\n{'=' * 46}\n{lulus}/{len(hasil)} pemeriksaan lulus")
