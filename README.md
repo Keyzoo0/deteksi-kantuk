@@ -196,8 +196,17 @@ diingatkan lewat suara tiap 10 detik bahwa notifikasi tidak akan sampai.
 
 ## Web UI
 
-Buka `http://<alamat-pi>:8080` dari HP yang berada di jaringan yang sama —
-alamatnya dicetak saat program mulai. Isinya: video langsung beranotasi,
+Buka **`http://deteksikantuk.local:8080`** dari HP yang berada di jaringan yang
+sama. Nama itu datang dari mDNS/Avahi bawaan Raspberry Pi OS — jadi tidak perlu
+server DNS sendiri, dan alamatnya tetap sama walau IP-nya berubah tiap pindah
+jaringan. Namanya mengikuti nama host Pi; ganti dengan
+`sudo hostnamectl set-hostname <nama>` lalu perbarui baris `127.0.1.1` di
+`/etc/hosts`.
+
+Port `:8080` tetap perlu ditulis. Melepasnya berarti mengikat port 80, dan itu
+menuntut pemberian izin `cap_net_bind_service` ke Python sistem — yang berlaku
+untuk semua skrip Python di Pi, bukan hanya program ini. Tidak sepadan untuk
+menghemat lima ketukan. Isinya: video langsung beranotasi,
 grafik EAR & PERCLOS 2 jam terakhir, riwayat kejadian beserta tautan peta,
 pemasangan speaker Bluetooth, penggantian WiFi, dan tombol reboot/matikan.
 

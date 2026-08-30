@@ -194,8 +194,12 @@ def _jalankan(arg: argparse.Namespace) -> int:
     keadaan_web = KeadaanBersama(cfg.web)
     server, ket_web = mulai_server(keadaan_web)
     if server is not None:
+        import socket
+
         from .sistem import info_sistem
-        alamat = info_sistem().get("alamat", "").split()
+        # Nama mDNS didahulukan: alamat IP berubah tiap pindah jaringan,
+        # sedangkan <nama-host>.local tetap sama di mana pun alat dipasang.
+        alamat = [f"{socket.gethostname()}.local"] + info_sistem().get("alamat", "").split()
         ket_web = " | ".join(f"http://{a}:{cfg.web.port}" for a in alamat) or ket_web
     print(f"Web      : {ket_web}")
     # Tanpa tombol fisik maupun jendela (mis. dijalankan systemd di Pi yang
