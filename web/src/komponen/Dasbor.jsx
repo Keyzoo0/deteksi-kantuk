@@ -36,14 +36,16 @@ export default function Dasbor({ data }) {
 
   return (
     <div className="grid gap-4 xl:grid-cols-12">
-      <Panel judul="Kamera" kelas="xl:col-span-5"
+      <Panel judul="Kamera" kelas="xl:col-span-3"
              aksi={<span className="text-xs text-muted-foreground">
                {s.fps ? `${s.fps.toFixed(1)} fps` : "siaga"}</span>}>
-        <img src="/video" alt="video langsung"
-             className="aspect-4/3 w-full rounded-md border bg-black object-contain" />
+        {/* Tanpa rasio yang dipaksakan: frame kamera berputar 90 derajat jadi
+            potret, dan memaksanya ke kotak lanskap hanya menghasilkan pita
+            hitam lebar di kiri-kanan. */}
+        <img src="/video" alt="video langsung" className="w-full rounded-md border bg-black" />
       </Panel>
 
-      <Panel judul="Status alat" kelas="xl:col-span-7">
+      <Panel judul="Status alat" kelas="xl:col-span-5">
         <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
           {[["Kamera", a.kamera], ["Suara", a.suara], ["GPS", a.gps],
             ["Internet", a.internet], ["Kerabat", a.kerabat], ["Alarm", a.alarm]]
@@ -62,7 +64,37 @@ export default function Dasbor({ data }) {
         </div>
       </Panel>
 
-      <Panel judul="EAR & PERCLOS — 2 jam terakhir" kelas="xl:col-span-8"
+      <Panel judul="Riwayat kejadian" kelas="xl:col-span-4"
+
+             aksi={<span className="text-xs text-muted-foreground">
+               {riwayat.length} kejadian</span>}>
+        <div className="max-h-52 overflow-y-auto">
+          <Table>
+            <TableHeader><TableRow className="hover:bg-transparent">
+              <TableHead className="h-8">Waktu</TableHead><TableHead className="h-8">Lama</TableHead>
+              <TableHead className="h-8">Alasan</TableHead><TableHead className="h-8">Peta</TableHead>
+            </TableRow></TableHeader>
+            <TableBody>
+              {riwayat.map((k, i) => (
+                <TableRow key={i}>
+                  <TableCell className="py-1.5">{k.jam}</TableCell>
+                  <TableCell className="py-1.5">{k.lama}</TableCell>
+                  <TableCell className="py-1.5">{k.alasan}</TableCell>
+                  <TableCell className="py-1.5">{k.tautan
+                    ? <a className="underline" target="_blank" rel="noreferrer" href={k.tautan}>buka</a>
+                    : "—"}</TableCell>
+                </TableRow>
+              ))}
+              {!riwayat.length && (
+                <TableRow className="hover:bg-transparent">
+                  <TableCell colSpan={4} className="py-6 text-center text-muted-foreground">
+                    belum ada kejadian</TableCell></TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </div>
+      </Panel>
+      <Panel judul="EAR & PERCLOS — 2 jam terakhir" kelas="xl:col-span-12"
         aksi={<div className="flex gap-3 text-xs text-muted-foreground">
           {[["EAR", konfigGrafik.ear.color], ["PERCLOS", konfigGrafik.perclos.color]].map(([n, c]) => (
             <span key={n} className="flex items-center gap-1.5">
@@ -95,35 +127,6 @@ export default function Dasbor({ data }) {
         )}
       </Panel>
 
-      <Panel judul="Riwayat kejadian" kelas="xl:col-span-4"
-             aksi={<span className="text-xs text-muted-foreground">
-               {riwayat.length} kejadian</span>}>
-        <div className="max-h-52 overflow-y-auto">
-          <Table>
-            <TableHeader><TableRow className="hover:bg-transparent">
-              <TableHead className="h-8">Waktu</TableHead><TableHead className="h-8">Lama</TableHead>
-              <TableHead className="h-8">Alasan</TableHead><TableHead className="h-8">Peta</TableHead>
-            </TableRow></TableHeader>
-            <TableBody>
-              {riwayat.map((k, i) => (
-                <TableRow key={i}>
-                  <TableCell className="py-1.5">{k.jam}</TableCell>
-                  <TableCell className="py-1.5">{k.lama}</TableCell>
-                  <TableCell className="py-1.5">{k.alasan}</TableCell>
-                  <TableCell className="py-1.5">{k.tautan
-                    ? <a className="underline" target="_blank" rel="noreferrer" href={k.tautan}>buka</a>
-                    : "—"}</TableCell>
-                </TableRow>
-              ))}
-              {!riwayat.length && (
-                <TableRow className="hover:bg-transparent">
-                  <TableCell colSpan={4} className="py-6 text-center text-muted-foreground">
-                    belum ada kejadian</TableCell></TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </div>
-      </Panel>
     </div>
   )
 }

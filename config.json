@@ -6,7 +6,7 @@
     "tinggi": 480,
     "fps": 30,
     "fourcc": "MJPG",
-    "putar": 90,
+    "putar": 270,
     "flip_horizontal": true
   },
   "ambang": {
