@@ -49,6 +49,21 @@ def _bar(frame: np.ndarray, x: int, y: int, w: int, h: int, nilai: float,
     cv2.line(frame, (gx, y - 2), (gx, y + h + 2), KUNING, 1)
 
 
+def layar_siaga(lebar: int, tinggi: int, pesan: str = "Tekan SPASI untuk memulai sistem",
+                catatan: str = "q keluar") -> np.ndarray:
+    """Layar tunggu sebelum sistem dinyalakan (kamera sengaja belum dibuka)."""
+    frame = np.full((tinggi, lebar, 3), 22, dtype=np.uint8)
+    judul = "ASISTEN MONITORING KANTUK"
+    (tw, _), _ = cv2.getTextSize(judul, FONT, 0.8, 2)
+    _teks(frame, judul, ((lebar - tw) // 2, tinggi // 2 - 40), 0.8, HIJAU, 2)
+    (tw, _), _ = cv2.getTextSize(pesan, FONT, 0.6, 2)
+    _teks(frame, pesan, ((lebar - tw) // 2, tinggi // 2 + 10), 0.6, PUTIH, 2)
+    (tw, _), _ = cv2.getTextSize(catatan, FONT, 0.45, 1)
+    _teks(frame, catatan, ((lebar - tw) // 2, tinggi // 2 + 45), 0.45, ABU)
+    cv2.rectangle(frame, (2, 2), (lebar - 3, tinggi - 3), (60, 60, 60), 2)
+    return frame
+
+
 def gambar_kalibrasi(frame: np.ndarray, hasil: HasilDeteksi, sisa: float) -> None:
     """Layar kalibrasi: minta pengguna menatap kamera dengan wajar."""
     tinggi, lebar = frame.shape[:2]
@@ -71,7 +86,8 @@ def gambar_kalibrasi(frame: np.ndarray, hasil: HasilDeteksi, sisa: float) -> Non
 
 
 def gambar_overlay(frame: np.ndarray, hasil: HasilDeteksi, st: Status,
-                   fps: float, debug: bool = False) -> None:
+                   fps: float, debug: bool = False,
+                   bersuara: bool = False, catatan: str = "") -> None:
     tinggi, lebar = frame.shape[:2]
     kantuk = st.level == KANTUK
     warna_status = MERAH if kantuk else HIJAU
@@ -124,3 +140,8 @@ def gambar_overlay(frame: np.ndarray, hasil: HasilDeteksi, st: Status,
 
     # --- info pojok kanan atas ---
     _teks(frame, f"{fps:4.1f} FPS", (lebar - 88, 26), 0.5, PUTIH)
+    if bersuara:      # peringatan lisan sedang berbunyi di speaker
+        _teks(frame, "((  SUARA  ))", (lebar - 118, 48), 0.5, KUNING, 2)
+    if catatan:       # mis. hitung mundur sebelum sistem mati sendiri
+        (tw, _), _ = cv2.getTextSize(catatan, FONT, 0.5, 2)
+        _teks(frame, catatan, (lebar - tw - 12, 70), 0.5, MERAH, 2)
