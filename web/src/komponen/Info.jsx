@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { aksi, ambil } from "@/lib/api"
@@ -80,10 +80,7 @@ export default function Info({ info, setInfo }) {
     <div className="space-y-4">
       <Card>
         <CardHeader className="flex-row items-start justify-between gap-3 space-y-0">
-          <div>
-            <CardTitle className="text-sm">Lembar sampul dokumen</CardTitle>
-            <CardDescription>Semua isian dan logo di halaman ini bisa diubah.</CardDescription>
-          </div>
+          <CardTitle className="text-sm">Lembar sampul dokumen</CardTitle>
           <div className="flex shrink-0 gap-2">
             {ubah ? <>
               <Button size="sm" onClick={simpan}>Simpan</Button>
