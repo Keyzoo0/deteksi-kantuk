@@ -34,6 +34,7 @@ TERKIRIM = "terkirim"             # alarm tingkat 3
 DIAKUI = "diakui"                 # tombol ditekan
 BERHENTI = "berhenti"             # kendaraan menepi (dideteksi GPS)
 ISTIRAHAT = "istirahat"           # sistem dimatikan pengguna lewat tombol
+TANPA_INTERNET = "tanpa-internet" # notifikasi kerabat tidak akan sampai
 MATI = "mati"
 SIRENE = "sirene"                 # nada, bukan ucapan -- tanpa varian suara
 BIP = "bip"                       # isyarat: tahanan 3 detik tercapai
@@ -57,6 +58,8 @@ PESAN: dict[str, str] = {
     DIAKUI: "Terima kasih. Silakan menepi dan beristirahat.",
     BERHENTI: "Kendaraan sudah berhenti. Alarm dimatikan.",
     ISTIRAHAT: "Sistem dimatikan. Silakan beristirahat.",
+    TANPA_INTERNET: ("Tidak ada koneksi internet. Notifikasi ke kerabat "
+                     "tidak dapat dikirim."),
     MATI: "Wajah tidak terdeteksi lebih dari satu menit. Sistem dimatikan.",
     SIRENE: "",                   # nada, dibuat tools/buat_suara.py
     BIP: "",
@@ -160,13 +163,15 @@ class AsistenSuara:
         self._terakhir[kunci] = time.monotonic()
         return True
 
-    def ucap(self, kunci: str, antre: bool = False, paksa: bool = False) -> bool:
+    def ucap(self, kunci: str, antre: bool = False, paksa: bool = False,
+             jeda: float | None = None) -> bool:
         """Bunyikan satu pesan.
 
         `antre`  : pesan penting -- kalau speaker sedang dipakai, tunggu giliran
                    alih-alih hangus (dipakai untuk sapaan dan panduan tahapan).
         `paksa`  : abaikan jeda ulang (dipakai saat pesan memang harus berbunyi
                    sekali di titik itu, mis. saat sistem baru dinyalakan).
+        `jeda`   : jeda ulang khusus untuk pesan ini, menimpa setelan umum.
         """
         if not self.aktif:
             return False
@@ -174,7 +179,8 @@ class AsistenSuara:
         # Jeda ulang memakai jam dinding, bukan waktu video, supaya peringatan
         # tidak beruntun saat menganalisis berkas video lebih cepat dari waktu
         # nyata.
-        if not paksa and sekarang - self._terakhir.get(kunci, -1e9) < self.cfg.jeda_ulang_detik:
+        batas = self.cfg.jeda_ulang_detik if jeda is None else jeda
+        if not paksa and sekarang - self._terakhir.get(kunci, -1e9) < batas:
             return False
         if self.sedang_bicara:
             if antre and kunci not in self._antrean:

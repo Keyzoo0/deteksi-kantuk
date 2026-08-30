@@ -18,7 +18,9 @@ sudo apt-get install -y python3-venv python3-dev libgl1 libglib2.0-0 v4l-utils \
 # Tombol "tahan 8 detik" harus bisa mematikan Pi tanpa sandi: alat ini dipakai
 # tanpa monitor maupun keyboard, dan mencabut daya begitu saja merusak kartu SD.
 echo ">> Memberi izin poweroff/reboot tanpa sandi untuk $USER..."
-printf '%s ALL=(ALL) NOPASSWD: /sbin/poweroff, /sbin/reboot, /usr/sbin/poweroff, /usr/sbin/reboot\n' \
+# nmcli ikut diizinkan supaya ganti WiFi bisa dilakukan dari web UI: alat ini
+# dipakai tanpa monitor, jadi pindah jaringan tidak boleh perlu SSH.
+printf '%s ALL=(ALL) NOPASSWD: /sbin/poweroff, /sbin/reboot, /usr/sbin/poweroff, /usr/sbin/reboot, /usr/bin/nmcli\n' \
     "$USER" | sudo tee "/etc/sudoers.d/020_${USER}-poweroff" >/dev/null
 sudo chmod 440 "/etc/sudoers.d/020_${USER}-poweroff"
 
@@ -72,6 +74,22 @@ echo ""
 .venv/bin/python -c "import cv2, mediapipe, sys; print('Python', sys.version.split()[0], '| OpenCV', cv2.__version__, '| MediaPipe', mediapipe.__version__)"
 echo ">> Mengunduh model face_landmarker (sekali saja, ~3,8 MB)..."
 .venv/bin/python -c "from src.deteksi import pastikan_model; pastikan_model()"
+
+# Layanan systemd agar alat menyala sendiri saat Pi dihidupkan. Sengaja
+# layanan PENGGUNA, bukan sistem: PipeWire hidup di sesi pengguna, dan layanan
+# sistem tanpa XDG_RUNTIME_DIR membuat pw-play gagal sehingga alat jadi bisu.
+if [ -f deteksi-kantuk.service ]; then
+  echo ">> Memasang layanan systemd pengguna..."
+  mkdir -p "$HOME/.config/systemd/user"
+  cp deteksi-kantuk.service "$HOME/.config/systemd/user/deteksi-kantuk.service"
+  systemctl --user daemon-reload
+  systemctl --user enable deteksi-kantuk >/dev/null
+  # Tanpa linger, sesi pengguna mati saat tidak ada yang login -- padahal alat
+  # ini memang dipakai tanpa monitor dan tanpa login.
+  sudo loginctl enable-linger "$USER"
+  echo "   nyalakan sekarang : systemctl --user start deteksi-kantuk"
+  echo "   lihat keluarannya : journalctl --user -u deteksi-kantuk -f"
+fi
 
 echo ">> Kamera yang terdeteksi:"
 v4l2-ctl --list-devices 2>/dev/null || true

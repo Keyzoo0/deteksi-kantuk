@@ -31,9 +31,11 @@ import cv2
 
 from .config import Config
 from .deteksi import DetektorWajah
+from .gps import PembacaGps, Posisi
 from .kamera import (buka_kamera, cari_perangkat, info_kamera, pastikan_kamera_ada,
                      perangkat_merek, sambung_ulang)
 from .metrik import KANTUK, Kalibrator, PenilaiKantuk, Status
+from .notifikasi import Notifikasi
 from .senyap import redam_pustaka_c, redam_stderr, siapkan_font_qt
 from .alarm import (AKUI, BUNYI_L1, BUNYI_L2, KIRIM_L3, MENEPI, MULAI_L2, SELESAI,
                     L2, TENANG, TanggaAlarm)
@@ -41,6 +43,7 @@ from .suara import (ARAHKAN, BERHENTI, BIP, BIP_GANDA, DIAKUI, ISTIRAHAT, MATI,
                     MENGANTUK, MULAI_KALIBRASI, SALAM, SIAP, SIRENE, TEKAN_TOMBOL,
                     TERKIRIM, AsistenSuara)
 from .tampilan import gambar_kalibrasi, gambar_overlay, layar_siaga
+from .web import Cuplikan, KeadaanBersama, mulai_server
 from .tombol_gpio import (ISYARAT_TAHAN, ISYARAT_TAHAN_LAMA, KEDIP_CEPAT,
                           KEDIP_LAMBAT, KETUK, NYALA, PADAM, TAHAN, TAHAN_LAMA,
                           TombolFisik)
@@ -91,12 +94,17 @@ class Sesi:
     hilang_sejak: float | None = None    # kapan wajah mulai tidak terlihat
     alarm: TanggaAlarm | None = None     # tangga alarm 3 tingkat
     alarm_bunyi: bool = False            # sirene tingkat 2 sedang berbunyi
+    l3_terkirim: bool = False            # notifikasi darurat sudah dikirim
 
 
-def cetak_status(st: Status, fps: float, catatan: str = "") -> None:
+def cetak_status(st: Status, fps: float, catatan: str = "",
+                 posisi: Posisi | None = None) -> None:
     """Baris status untuk mode headless (menimpa baris yang sama)."""
     tanda = "!!" if st.level == KANTUK else "  "
     alasan = ", ".join(st.alasan) or ("-" if st.ada_wajah else "wajah hilang")
+    if posisi is not None:
+        alasan = (f"{posisi.kecepatan_kmh:4.1f} km/jam | {alasan}" if posisi.valid
+                  else f"GPS {posisi.satelit}sat | {alasan}")
     if catatan:
         alasan = f"{alasan} | {catatan}"
     sys.stdout.write(
@@ -179,18 +187,35 @@ def _jalankan(arg: argparse.Namespace) -> int:
 
     tombol = TombolFisik(cfg.tombol)
     print(f"Tombol   : {tombol.keterangan}")
+    gps = PembacaGps(cfg.gps)
+    print(f"GPS      : {gps.keterangan}")
+    notif = Notifikasi(cfg.notifikasi, AKAR)
+    print(f"Kerabat  : {notif.keterangan}")
+    keadaan_web = KeadaanBersama(cfg.web)
+    server, ket_web = mulai_server(keadaan_web)
+    if server is not None:
+        from .sistem import info_sistem
+        alamat = info_sistem().get("alamat", "").split()
+        ket_web = " | ".join(f"http://{a}:{cfg.web.port}" for a in alamat) or ket_web
+    print(f"Web      : {ket_web}")
     # Tanpa tombol fisik maupun jendela (mis. dijalankan systemd di Pi yang
     # tombolnya belum terpasang) tidak ada cara menekan apa pun, jadi sistem
     # langsung menyala. Sumber berkas video juga tidak perlu ditunggu.
     auto = arg.langsung or dari_berkas or (not tampilkan and not tombol.ada)
     try:
-        return _loop(arg, cfg, detektor, asisten, tombol, tampilkan, dari_berkas, auto)
+        return _loop(arg, cfg, detektor, asisten, tombol, gps, notif, keadaan_web,
+                     tampilkan, dari_berkas, auto)
     finally:
         tombol.tutup()
+        gps.tutup()
+        notif.tutup()
+        if server is not None:
+            server.shutdown()
 
 
 def _loop(arg, cfg: Config, detektor: DetektorWajah, asisten: AsistenSuara,
-          tombol: TombolFisik, tampilkan: bool, dari_berkas: bool,
+          tombol: TombolFisik, gps: PembacaGps, notif: Notifikasi,
+          web: KeadaanBersama, tampilkan: bool, dari_berkas: bool,
           auto: bool) -> int:
     keadaan = SIAGA
     cap: cv2.VideoCapture | None = None
@@ -299,10 +324,12 @@ def _loop(arg, cfg: Config, detektor: DetektorWajah, asisten: AsistenSuara,
                         sys.stdout.write("\r  SIAGA -- tahan tombol 3 detik untuk memulai"
                                          "        ")
                         sys.stdout.flush()
-                peristiwa = baca_tombol(
-                    layar_siaga(cfg.kamera.lebar, cfg.kamera.tinggi,
-                                "Tahan tombol 3 detik untuk memulai"),
-                    time.monotonic())
+                bingkai_siaga = layar_siaga(cfg.kamera.lebar, cfg.kamera.tinggi,
+                                            "Tahan tombol 3 detik untuk memulai")
+                # Halaman web tetap menampilkan sesuatu saat sistem siaga,
+                # supaya jelas bedanya "belum dinyalakan" dengan "rusak".
+                web.perbarui(bingkai_siaga, {"keadaan": "siaga"}, None, time.monotonic())
+                peristiwa = baca_tombol(bingkai_siaga, time.monotonic())
                 if peristiwa == "keluar":
                     break
                 if peristiwa == TAHAN_LAMA:
@@ -367,13 +394,24 @@ def _loop(arg, cfg: Config, detektor: DetektorWajah, asisten: AsistenSuara,
             if perekam is None and arg.rekam:
                 perekam = _buat_perekam(arg.rekam, cap, fps_berkas)
 
+            # Tanpa internet, alarm tingkat 3 tidak akan sampai ke kerabat.
+            # Pengendara harus tahu, jadi diingatkan berkala selama sistem
+            # menyala -- tetapi tidak sampai menimpa bunyi alarm yang sedang
+            # berlangsung (antre=False).
+            if notif.siap and not notif.daring:
+                asisten.ucap(TANPA_INTERNET,
+                             jeda=cfg.suara.jeda_tanpa_internet_detik)
+
             catatan = ""
             # --- KALIBRASI -----------------------------------------------
             if keadaan == KALIBRASI:
+                web.perbarui(frame, {"keadaan": "kalibrasi",
+                                     "sisa": round(sesi.kalibrator.sisa_detik(t), 1)},
+                             None, t)
                 catatan = _tahap_kalibrasi(cfg, sesi, asisten, hasil, t)
                 if sesi.penilai is not None:
                     keadaan = MONITOR
-                if tampilkan or perekam is not None:
+                if tampilkan or perekam is not None or web.ada_penonton:
                     gambar_kalibrasi(frame, hasil, sesi.kalibrator.sisa_detik(t))
                 if not tampilkan and t - cetak_terakhir > 0.5:
                     sisa = sesi.kalibrator.sisa_detik(t)
@@ -386,18 +424,19 @@ def _loop(arg, cfg: Config, detektor: DetektorWajah, asisten: AsistenSuara,
             # --- MONITOR --------------------------------------------------
             else:
                 st = sesi.penilai.perbarui(hasil, t)      # type: ignore[union-attr]
-                _catat_episode(sesi, st, t)
+                _catat_episode(sesi, st, t, gps.posisi, web)
                 habis, catatan = _tahap_monitor(cfg, sesi, asisten, st, t, dari_berkas)
-                _bunyikan_alarm(cfg, sesi, asisten, tombol, st, t)
+                _bunyikan_alarm(cfg, sesi, asisten, tombol, gps, notif, st, t, frame)
                 if habis:
                     matikan(f"wajah hilang lebih dari "
                             f"{cfg.mati_tanpa_wajah_detik:.0f} detik, sistem dimatikan.")
                     continue
-                if tampilkan or perekam is not None:
+                if tampilkan or perekam is not None or web.ada_penonton:
                     gambar_overlay(frame, hasil, st, fps, debug,
                                    asisten.sedang_bicara, catatan)
+                _suapi_web(web, frame, sesi, st, fps, gps, t)
                 if not tampilkan and t - cetak_terakhir > 0.2:
-                    cetak_status(st, fps, catatan)
+                    cetak_status(st, fps, catatan, gps.posisi)
                     cetak_terakhir = t
 
             if perekam is not None:
@@ -416,6 +455,7 @@ def _loop(arg, cfg: Config, detektor: DetektorWajah, asisten: AsistenSuara,
                           f"{sesi.alarm.tingkat} -- alarm dimatikan")
                 for e in sesi.alarm.ketuk(t):
                     _mainkan(asisten, e)
+                    _tutup_laporan(sesi, notif, gps, "pengendara menekan tombol")
                 sesi.alarm_bunyi = False
             elif peristiwa == ISYARAT_TAHAN:
                 tombol.pola_led(KEDIP_CEPAT)
@@ -525,19 +565,91 @@ def _mainkan(asisten: AsistenSuara, peristiwa: str) -> None:
         asisten.ucap(pesan, antre=True, paksa=True)
 
 
+def _suapi_web(web: KeadaanBersama, frame, sesi: Sesi, st: Status, fps: float,
+               gps: PembacaGps, t: float) -> None:
+    """Titipkan frame + metrik terbaru ke web server (tanpa memblokir)."""
+    posisi = gps.posisi
+    tingkat = sesi.alarm.tingkat if sesi.alarm else 0
+    web.perbarui(frame, {
+        "keadaan": "monitor",
+        "level": st.level,
+        "alasan": ", ".join(st.alasan),
+        "ear": st.ear_norm * 100,
+        "perclos": st.perclos * 100,
+        "kedip": st.kedip_total,
+        "menguap": st.menguap_total,
+        "tingkat": tingkat,
+        "fps": fps,
+        "gps": (f"{posisi.kecepatan_kmh:.0f} km/jam" if posisi.valid
+                else f"{posisi.satelit} sat"),
+    }, Cuplikan(t - sesi.mulai, st.ear_norm * 100, st.perclos * 100, tingkat), t)
+
+
+def _pesan_darurat(sesi: Sesi, st: Status, gps: PembacaGps) -> str:
+    posisi = gps.posisi
+    baris = [
+        "PERINGATAN KANTUK",
+        "Pengendara terdeteksi mengantuk dan tidak merespons alarm.",
+        "",
+        f"Waktu    : {time.strftime('%d %b %Y %H:%M:%S %Z')}",
+        f"Alasan   : {', '.join(st.alasan) or 'mata terpejam lama'}",
+        f"Kejadian : ke-{sesi.alarm.kejadian_l3} dalam perjalanan ini",  # type: ignore[union-attr]
+    ]
+    if posisi.valid:
+        baris += [f"Kecepatan: {posisi.kecepatan_kmh:.0f} km/jam",
+                  f"Posisi   : {posisi.lat:.6f}, {posisi.lon:.6f}",
+                  posisi.tautan]
+    else:
+        baris.append("Posisi   : belum dapat sinyal GPS")
+    return "\n".join(baris)
+
+
+def _tutup_laporan(sesi: Sesi, notif: Notifikasi, gps: PembacaGps, sebab: str) -> None:
+    """Kabari kerabat bahwa keadaan sudah selesai.
+
+    Tanpa pesan penutup, kerabat hanya menerima kabar buruk lalu senyap -- itu
+    membuat panik dan tidak berguna. Pesan ini yang mengubahnya jadi informasi.
+    """
+    if not sesi.l3_terkirim:
+        return
+    sesi.l3_terkirim = False
+    posisi = gps.posisi
+    teks = [f"Situasi selesai: {sebab}.",
+            f"Waktu    : {time.strftime('%d %b %Y %H:%M:%S %Z')}"]
+    if posisi.valid:
+        teks += [f"Posisi   : {posisi.tautan}"]
+    notif.kirim("\n".join(teks))
+
+
 def _bunyikan_alarm(cfg: Config, sesi: Sesi, asisten: AsistenSuara,
-                    tombol: TombolFisik, st: Status, t: float) -> None:
+                    tombol: TombolFisik, gps: PembacaGps, notif: Notifikasi,
+                    st: Status, t: float, frame=None) -> None:
     """Jalankan tangga alarm satu langkah dan wujudkan hasilnya jadi suara/LED."""
     assert sesi.alarm is not None
+    # Dipanggil tiap frame supaya hitungan "sudah diam berapa lama" tetap
+    # berjalan walau alarm belum berbunyi.
+    if gps.berhenti(t) and sesi.alarm.tingkat:
+        print(f"\n[alarm] kendaraan berhenti -- alarm tingkat "
+              f"{sesi.alarm.tingkat} dimatikan")
+        for e in sesi.alarm.kendaraan_berhenti(t):
+            _mainkan(asisten, e)
+            _tutup_laporan(sesi, notif, gps, "kendaraan sudah berhenti")
     mengantuk = st.ada_wajah and (
         st.durasi_tertutup >= cfg.suara.terpejam_detik
         or st.durasi_menguap >= cfg.suara.menguap_detik)
     sebelum = sesi.alarm.tingkat
     for e in sesi.alarm.perbarui(mengantuk, t, asisten.perangkat_hidup()):
         if e == KIRIM_L3:
-            # Fase 3 akan mengirim posisi + foto ke kerabat lewat Telegram.
+            foto = None
+            if frame is not None and cfg.notifikasi.kirim_foto:
+                # Foto hanya disertakan pada tingkat 3, sesuai kesepakatan:
+                # kejadian biasa cukup teks, yang darurat perlu bukti keadaan.
+                ok, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
+                foto = buf.tobytes() if ok else None
+            dikirim = notif.kirim(_pesan_darurat(sesi, st, gps), foto)
+            sesi.l3_terkirim = sesi.l3_terkirim or dikirim
             print(f"\n[alarm] TINGKAT 3 -- notifikasi kerabat "
-                  f"(kejadian ke-{sesi.alarm.kejadian_l3}) belum terpasang.")
+                  f"{'dikirim' if dikirim else 'GAGAL (' + notif.keterangan + ')'}")
         _mainkan(asisten, e)
     if sesi.alarm.tingkat != sebelum:
         print(f"\n[alarm] tingkat {sebelum} -> {sesi.alarm.tingkat}")
@@ -564,7 +676,9 @@ def _matikan_pi(asisten: AsistenSuara) -> None:
     print("[sistem] gagal mematikan otomatis; matikan manual lewat SSH.")
 
 
-def _catat_episode(sesi: Sesi, st: Status, t: float) -> None:
+def _catat_episode(sesi: Sesi, st: Status, t: float,
+                   posisi: Posisi | None = None,
+                   web: KeadaanBersama | None = None) -> None:
     """Catat awal & akhir tiap periode KANTUK untuk ringkasan sesi."""
     # Waktu dicatat relatif terhadap awal monitoring supaya terbaca sebagai
     # menit:detik sesi, bukan angka jam monotonic sistem.
@@ -572,10 +686,20 @@ def _catat_episode(sesi: Sesi, st: Status, t: float) -> None:
     if st.level != sesi.level_lalu:
         if st.level == KANTUK:
             sesi.episode.append({"mulai": lewat, "selesai": lewat,
-                                 "alasan": list(st.alasan)})
+                                 "alasan": list(st.alasan),
+                                 "posisi": posisi})
+            if web is not None:
+                web.catat_kejadian({
+                    "jam": time.strftime("%H:%M:%S"),
+                    "lama": "berlangsung",
+                    "alasan": ", ".join(st.alasan),
+                    "tautan": posisi.tautan if posisi and posisi.valid else "",
+                })
         sesi.level_lalu = st.level
     elif st.level == KANTUK and sesi.episode:
         sesi.episode[-1]["selesai"] = lewat
+        if web is not None and web.riwayat:
+            web.riwayat[-1]["lama"] = f"{lewat - sesi.episode[-1]['mulai']:.1f} dtk"
         for a in st.alasan:
             pokok = a.split(" ")[0]
             if not any(x.startswith(pokok) for x in sesi.episode[-1]["alasan"]):
@@ -613,6 +737,9 @@ def _cetak_ringkasan(sesi: Sesi, rekam: str | None) -> None:
         lama = e["selesai"] - e["mulai"]
         print(f"  {i}. {_jam(e['mulai'])} - {_jam(e['selesai'])} "
               f"({lama:.1f} detik) : {', '.join(e['alasan'])}")
+        pos = e.get("posisi")
+        if pos is not None and pos.valid:
+            print(f"      {pos.tautan}")
     if rekam:
         print(f"\nVideo anotasi   : {rekam}")
 

@@ -1,25 +1,51 @@
 # Asisten Monitoring Rasa Kantuk (Drowsiness Detection)
 
-Deteksi rasa kantuk secara real-time dari **mata** dan **mulut** menggunakan webcam,
-lengkap dengan **asisten suara Bahasa Indonesia** yang menuntun dan memperingatkan
-pengemudi lewat speaker. Target akhir: **Raspberry Pi 5 (8 GB) + webcam Logitech
-USB**, tetapi program ini juga bisa langsung dicoba di PC/laptop Linux.
+Alat pemantau rasa kantuk pengendara **sepeda motor**, dipasang di dekat spion.
+Raspberry Pi 5 + webcam Logitech + headset Bluetooth + GPS + satu tombol di
+stang. Tidak ada monitor dan tidak ada keyboard: seluruh kendali lewat tombol,
+seluruh umpan balik lewat suara, dan pemantauan lewat halaman web dari HP.
 
-Status ditampilkan sebagai teks besar di jendela video: **AMAN** (hijau) atau
-**KANTUK** (merah), lengkap dengan alasannya.
+Kantuk dinilai dari **mata** (EAR/PERCLOS) dan **mulut** (menguap) memakai
+MediaPipe FaceLandmarker. Kalau pengendara terdeteksi mengantuk, alat menaiki
+**tangga alarm tiga tingkat**, dan pada tingkat terakhir mengirim posisi GPS
+serta foto ke kerabat lewat Telegram.
 
-Alurnya tiga tahap:
+## Tombol
 
-| Tahap | Yang terjadi | Suara |
+Satu tombol momentary antara **GPIO21 (pin fisik 40)** dan **GND (pin 39)**,
+memakai pull-up internal. Artinya dibedakan dari lama tekanan, dan aksinya
+dijalankan saat **dilepas** — selagi ditahan hanya keluar bunyi bip penanda
+ambang, sehingga menahan lama tidak lebih dulu memicu aksi yang lebih pendek.
+
+| Tekanan | Arti | Isyarat |
 |---|---|---|
-| **SIAGA** | Kamera belum menyala, menunggu tombol **SPASI** | *"Halo, saya asisten pribadi monitoring rasa kantuk saat berkendara. Tekan tombol spasi untuk memulai sistem."* |
-| **KALIBRASI** | Kamera menyala, menunggu wajah masuk bingkai lalu merekam baseline | *"Arahkan kamera ke wajah Anda"* (tiap 5 detik selama wajah belum terlihat), lalu *"Memulai kalibrasi. Arahkan dan tahan wajah Anda menghadap ke kamera"*, ditutup *"Kalibrasi selesai. Sistem monitoring dimulai."* |
-| **MONITOR** | Penilaian kantuk tiap frame | *"Anda sedang mengantuk, silakan menepi"* saat mengantuk; *"Arahkan kamera ke wajah Anda"* saat wajah keluar bingkai |
+| Ketuk (<1 detik) | Matikan alarm yang sedang berbunyi | — |
+| Tahan 3 detik | Nyalakan sistem / matikan sistem untuk istirahat | satu bip |
+| Tahan 8 detik | Matikan Raspberry Pi dengan aman | dua bip |
 
-Bila wajah **hilang lebih dari 1 menit** saat monitoring, sistem mengucapkan
-*"Wajah tidak terdeteksi lebih dari satu menit. Sistem dimatikan"*, mencetak
-ringkasan sesi, mematikan kamera, dan kembali ke SIAGA — tekan **SPASI** untuk
-memulai lagi dari awal.
+Menyalakan sistem selalu diawali kalibrasi, jadi mematikan lalu menyalakan lagi
+sekaligus berfungsi sebagai kalibrasi ulang.
+
+## Tangga alarm
+
+| Tingkat | Pemicu | Yang terjadi |
+|---|---|---|
+| **1** | Mata terpejam >3 detik atau menguap >2 detik | Peringatan suara, diulang tiap 5 detik selama kantuk bertahan |
+| **2** | Tingkat 1 bertahan 10 detik, **atau** sudah 3 peringatan dalam 10 menit | Sirene menerus + "tekan tombol untuk mematikan alarm". **Hanya berhenti oleh tombol** |
+| **3** | Tingkat 2 berlalu 10 detik tanpa tombol | Kirim posisi + foto ke kerabat lewat Telegram; alarm tetap berbunyi |
+
+Dua aturan yang menentukan keselamatannya:
+
+* **Kantuk yang hilang sendiri tidak mematikan tingkat 2 ke atas.** Mata yang
+  terbuka sesaat justru khas orang yang tertidur sebentar-sebentar; hanya
+  tombol (atau kendaraan yang benar-benar berhenti) yang membuktikan kesadaran.
+* **Kalau headset Bluetooth tidak tersambung, tingkat 2 langsung melompat ke
+  tingkat 3.** Menunggu tombol itu percuma bila pengendara tidak mendengar
+  apa pun.
+
+Setelah tombol ditekan atau GPS mendeteksi kendaraan berhenti, kerabat menerima
+**pesan penutup**, tangga kembali ke nol, dan ada jeda 60 detik sebelum alarm
+boleh berbunyi lagi.
 
 ---
 
@@ -125,6 +151,80 @@ uv pip install edge-tts soundfile
 
 Kalimat baku pesan ada di `src/suara.py` (`PESAN`) — satu sumber untuk berkas
 WAV maupun TTS cadangan.
+
+---
+
+## GPS
+
+Modul NEO-6M lewat UART:
+
+```
+GPS TX  --> pin 10 (GPIO15, RXD)      GPS VCC --> pin 1 (3V3) atau pin 2 (5V)
+GPS RX  <-- pin 8  (GPIO14, TXD)      GPS GND --> pin 6
+```
+
+Perangkatnya **`/dev/ttyAMA0`, bukan `/dev/serial0`** — di Raspberry Pi 5
+`serial0` menunjuk ke UART debug di header 3-pin. Aktifkan dengan menambahkan
+`dtoverlay=uart0` ke `/boot/firmware/config.txt`.
+
+Posisi dipakai untuk tiga hal: isi notifikasi darurat, penanda lokasi di
+riwayat kejadian, dan deteksi kendaraan berhenti (kecepatan di bawah 3 km/jam
+selama 30 detik) yang otomatis mematikan alarm. **Tanpa fix GPS, kendaraan
+tidak pernah dianggap berhenti** — kalau tidak, alarm justru mati sendiri
+persis saat sinyal hilang.
+
+## Notifikasi Telegram
+
+1. Buat bot lewat [@BotFather](https://t.me/BotFather), salin tokennya.
+2. Buat berkas `rahasia.json` (sudah masuk `.gitignore`, jangan di-commit):
+
+   ```json
+   {"telegram_token": "ISI_TOKEN_DI_SINI", "telegram_chat_id": []}
+   ```
+
+3. Minta kerabat menekan **START** di bot Anda.
+4. Jalankan `.venv/bin/python tools/daftar_kerabat.py`, lalu pilih siapa yang
+   disetujui. Uji dengan `--uji`.
+
+Bot Telegram tidak bisa menyapa lebih dulu orang yang belum pernah
+menghubunginya — itulah sebabnya langkah 3 tidak bisa dilewati.
+
+Pesan yang gagal terkirim (sinyal hilang di jalan) disimpan ke
+`antrean_notifikasi.jsonl` dan dikirim ulang begitu jaringan kembali, dengan
+catatan berapa menit tertunda. Selama alat tidak punya internet, pengendara
+diingatkan lewat suara tiap 10 detik bahwa notifikasi tidak akan sampai.
+
+## Web UI
+
+Buka `http://<alamat-pi>:8080` dari HP yang berada di jaringan yang sama —
+alamatnya dicetak saat program mulai. Isinya: video langsung beranotasi,
+grafik EAR & PERCLOS 2 jam terakhir, riwayat kejadian beserta tautan peta,
+pemasangan speaker Bluetooth, penggantian WiFi, dan tombol reboot/matikan.
+
+Servernya memakai `http.server` dari pustaka standar, tanpa dependensi
+tambahan, dan seluruh CSS/JS ada di dalam halaman — alat ini harus tetap bisa
+dipakai saat tidak ada internet sama sekali.
+
+> Web UI tidak memakai kata sandi: siapa pun di jaringan yang sama bisa
+> membukanya. Pakai jaringan yang Anda percaya, bukan WiFi publik.
+
+## Menyala sendiri saat Pi dihidupkan
+
+`setup_raspi.sh` memasang layanan systemd **pengguna** (bukan layanan sistem):
+
+```bash
+systemctl --user enable --now deteksi-kantuk
+journalctl --user-unit=deteksi-kantuk -f
+```
+
+Harus layanan pengguna karena PipeWire hidup di sesi pengguna; layanan sistem
+tidak punya `XDG_RUNTIME_DIR` sehingga `pw-play` gagal dan alat jadi **bisu
+tanpa tanda apa pun**. `loginctl enable-linger` membuat sesi itu tetap hidup
+walau tidak ada yang login.
+
+Saat menyala, alat masuk keadaan **siaga** dan menunggu tombol ditahan — bukan
+langsung memonitor. Memonitor tanpa ada orang di depan kamera hanya membuat
+alat berteriak sendiri.
 
 ---
 
@@ -311,37 +411,52 @@ Semua ambang ada di `config.json` — bisa diubah tanpa menyentuh kode.
 ```jsonc
 {
   "kamera": {
-    "sumber": "2",            // index webcam atau path file video
+    "sumber": "auto",         // "auto" = kamera pertama yang cocok dengan merek
     "merek": "logitech",      // hanya kamera merek ini; "" = terima semua
     "lebar": 640, "tinggi": 480, "fps": 30,
-    "fourcc": "MJPG",         // "MJPG" | "YUYV" | "" (biarkan driver)
-    "flip_horizontal": true   // tampilan cermin
+    "fourcc": "MJPG", "flip_horizontal": true
   },
-  "ambang": {
-    "rasio_mata_tertutup": 0.62,     // EAR < 62% baseline = terpejam
-    "durasi_terpejam_detik": 1.2,    // terpejam selama ini -> KANTUK
-    "perclos_window_detik": 60.0,
-    "perclos_kantuk": 0.28,          // >28% -> KANTUK
-    "perclos_min_rentang": 30.0,     // PERCLOS dipercaya setelah 30 detik
-    "durasi_kedip_maks": 0.5,        // batas atas durasi satu kedipan
-    "mar_menguap": 0.50,             // ambang MUTLAK MAR untuk menganga
-    "mar_margin_baseline": 0.30,     // jarak minimum dari baseline tiap orang
-    "durasi_menguap_detik": 0.9,
-    "kantuk_saat_menguap": true,     // KANTUK selama menguap berlangsung
-    "menguap_per_menit_kantuk": 0    // 0 = aturan laju menguap dimatikan
+  "ambang": {                 // kapan tulisan KANTUK muncul di layar
+    "rasio_mata_tertutup": 0.62, "durasi_terpejam_detik": 1.2,
+    "perclos_window_detik": 60.0, "perclos_kantuk": 0.28,
+    "perclos_min_rentang": 30.0, "durasi_kedip_maks": 0.5,
+    "mar_menguap": 0.50, "mar_margin_baseline": 0.30,
+    "durasi_menguap_detik": 0.9, "kantuk_saat_menguap": true,
+    "menguap_per_menit_kantuk": 0
   },
-  "suara": {
-    "aktif": true,
-    "voice": "gadis",                // "gadis" (perempuan) | "ardi" (laki-laki)
-    "folder": "suara",               // tempat berkas <pesan>-<voice>.wav
-    "terpejam_detik": 3.0,           // terpejam selama ini -> bersuara
-    "menguap_detik": 2.0,            // menguap selama ini -> bersuara
-    "wajah_hilang_detik": 3.0,       // wajah hilang selama ini -> menuntun
-    "jeda_ulang_detik": 5.0,         // pesan sama paling cepat diulang
-    "pemutar": ""                    // kosong = deteksi otomatis (pw-play/aplay/...)
+  "suara": {                  // kapan asisten bersuara (lebih longgar dari layar)
+    "aktif": true, "voice": "gadis", "folder": "suara",
+    "terpejam_detik": 3.0, "menguap_detik": 2.0, "wajah_hilang_detik": 3.0,
+    "jeda_ulang_detik": 5.0, "jeda_tanpa_internet_detik": 10.0, "pemutar": ""
+  },
+  "alarm": {                  // tangga tiga tingkat
+    "l1_ulang_detik": 5.0, "l2_setelah_detik": 10.0,
+    "l2_setelah_l1_berulang": 3, "jendela_l1_detik": 600.0,
+    "l2_ulang_detik": 4.0, "l3_setelah_detik": 10.0,
+    "l3_ulang_kirim_detik": 300.0, "jeda_setelah_akui_detik": 60.0
+  },
+  "tombol": {
+    "aktif": true, "pin": 21, "pin_led": 27,
+    "ketuk_maks_detik": 1.0, "tahan_detik": 3.0, "tahan_lama_detik": 8.0,
+    "debounce_detik": 0.05
+  },
+  "gps": {
+    "aktif": true, "port": "/dev/ttyAMA0", "baud": 9600,
+    "ambang_berhenti_kmh": 3.0, "berhenti_detik": 30.0
+  },
+  "notifikasi": {
+    "aktif": true, "berkas_rahasia": "rahasia.json",
+    "berkas_antrean": "antrean_notifikasi.jsonl",
+    "kirim_foto": true, "batas_detik": 15.0,
+    "jeda_coba_ulang_detik": 60.0, "jeda_cek_daring_detik": 15.0
+  },
+  "web": {
+    "aktif": true, "host": "0.0.0.0", "port": 8080,
+    "fps_video": 5, "mutu_jpeg": 60,
+    "jeda_sampel_detik": 1.0, "jendela_detik": 7200.0
   },
   "kalibrasi_detik": 4.0,
-  "mati_tanpa_wajah_detik": 60.0,    // wajah hilang selama ini -> sistem mati
+  "mati_tanpa_wajah_detik": 60.0,
   "tampilkan_jendela": true
 }
 ```
@@ -409,21 +524,29 @@ deteksi-kantuk/
 │   ├── main.py       # mesin keadaan SIAGA -> KALIBRASI -> MONITOR
 │   ├── config.py     # dataclass konfigurasi + pembaca config.json
 │   ├── kamera.py     # pilih webcam Logitech (V4L2, MJPG) + penanganan galat
-│   ├── deteksi.py    # MediaPipe Face Mesh -> EAR & MAR
+│   ├── deteksi.py    # MediaPipe FaceLandmarker -> EAR & MAR
 │   ├── metrik.py     # kalibrasi, PERCLOS, hitung kedip & menguap, level kantuk
-│   ├── tampilan.py   # overlay OpenCV (layar siaga, kontur, panel metrik, banner)
+│   ├── alarm.py      # tangga alarm 3 tingkat (logika murni, tanpa perangkat)
+│   ├── tombol_gpio.py# tombol GPIO + LED status + penafsir lama tekanan
+│   ├── gps.py        # pembaca NEO-6M di thread sendiri + deteksi berhenti
+│   ├── notifikasi.py # Telegram: thread pengirim + antrean saat sinyal hilang
+│   ├── web.py        # server pemantauan lokal (pustaka standar saja)
+│   ├── sistem.py     # Bluetooth/WiFi/daya untuk web UI
 │   ├── suara.py      # asisten suara: pesan, antrean, pemutar WAV/TTS cadangan
-│   ├── tombol.py     # baca tombol dari terminal untuk mode headless
+│   ├── tampilan.py   # overlay OpenCV (layar siaga, kontur, panel, banner)
 │   └── senyap.py     # meredam pesan bawaan OpenCV/MediaPipe/libjpeg
-├── suara/            # berkas WAV pesan asisten (gadis & ardi)
+├── suara/            # berkas WAV pesan asisten (gadis & ardi) + nada alarm
 ├── tools/
 │   ├── cek_kamera.py            # ukur FPS nyata & frame robek tiap format
 │   ├── cek_suara.py             # putar tiap pesan asisten untuk uji speaker
-│   ├── buat_suara.py            # rekam ulang pesan dengan TTS neural (butuh internet)
-│   ├── uji_logika.py            # uji penilaian kantuk + asisten (frame sintetis)
-│   ├── siapkan_raspi.sh         # siapkan kartu SD Pi: user, SSH, WiFi (headless)
+│   ├── buat_suara.py            # rekam ulang pesan dengan TTS neural
+│   ├── daftar_kerabat.py        # daftarkan penerima notifikasi Telegram
+│   ├── uji_logika.py            # 50 pemeriksaan tanpa kamera/GPIO/jaringan
+│   ├── siapkan_raspi.sh         # siapkan kartu SD Pi: user, SSH, WiFi
 │   └── perbaiki_kamera_usb.sh   # matikan USB autosuspend (butuh sudo)
-├── config.json
+├── deteksi-kantuk.service       # layanan systemd pengguna (autostart)
+├── config.json                  # semua ambang & setelan
+├── rahasia.json                 # token bot + daftar kerabat (TIDAK di-commit)
 ├── setup.sh / setup_raspi.sh / run.sh
 └── requirements.txt
 ```
