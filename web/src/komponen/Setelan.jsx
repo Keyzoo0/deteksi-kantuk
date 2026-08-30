@@ -2,9 +2,10 @@ import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Baris, Kartu, Panel } from "@/komponen/bagian"
+import UbahInfo from "@/komponen/UbahInfo"
 import { aksi } from "@/lib/api"
 
-export default function Setelan() {
+export default function Setelan({ info, setInfo, setVersiLogo }) {
   const [bt, setBt] = useState(null)
   const [wifi, setWifi] = useState(null)
   const [sandi, setSandi] = useState({})
@@ -24,8 +25,8 @@ export default function Setelan() {
   const muatSistem = () => jalankan("sys", { perintah: "info" }, r => setSistem(r.info || {}))
 
   return (
-    <div className="grid gap-4 lg:grid-cols-2">
-      <Panel judul="Speaker Bluetooth" kelas="lg:row-span-2"
+    <div className="grid gap-4 xl:grid-cols-12">
+      <Panel judul="Speaker Bluetooth" kelas="xl:col-span-4"
         aksi={<Button size="sm" variant="secondary" onClick={pindai} disabled={sibuk === "bt"}>
           {sibuk === "bt" ? "Memindai…" : "Pindai"}</Button>}>
         {bt === null
@@ -46,7 +47,7 @@ export default function Setelan() {
               ))}
       </Panel>
 
-      <Panel judul="WiFi"
+      <Panel judul="WiFi" kelas="xl:col-span-4"
         aksi={<Button size="sm" variant="secondary" onClick={cariWifi} disabled={sibuk === "wifi"}>
           {sibuk === "wifi" ? "Mencari…" : "Cari jaringan"}</Button>}>
         {wifi === null
@@ -72,7 +73,7 @@ export default function Setelan() {
               </div>}
       </Panel>
 
-      <Panel judul="Sistem"
+      <Panel judul="Sistem" kelas="xl:col-span-4"
         aksi={<Button size="sm" variant="secondary" onClick={muatSistem} disabled={sibuk === "sys"}>
           Segarkan</Button>}>
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
@@ -90,6 +91,8 @@ export default function Setelan() {
         </div>
         {pesan && <p className="mt-3 text-sm text-amber-500">{pesan}</p>}
       </Panel>
+
+      <UbahInfo info={info} setInfo={setInfo} setVersiLogo={setVersiLogo} />
     </div>
   )
 }

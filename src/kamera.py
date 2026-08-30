@@ -235,6 +235,21 @@ def buka_kamera(cfg: KameraConfig) -> cv2.VideoCapture:
     )
 
 
+_PUTARAN = {90: cv2.ROTATE_90_CLOCKWISE, 180: cv2.ROTATE_180,
+            270: cv2.ROTATE_90_COUNTERCLOCKWISE}
+
+
+def putar_frame(frame, derajat: int):
+    """Putar frame searah jarum jam. Derajat selain 90/180/270 diabaikan."""
+    kode = _PUTARAN.get(derajat % 360)
+    return frame if kode is None else cv2.rotate(frame, kode)
+
+
+def ukuran_setelah_putar(lebar: int, tinggi: int, derajat: int) -> tuple[int, int]:
+    """Ukuran frame setelah diputar -- 90/270 menukar lebar dengan tinggi."""
+    return (tinggi, lebar) if derajat % 180 == 90 else (lebar, tinggi)
+
+
 def info_kamera(cap: cv2.VideoCapture) -> str:
     return (f"{int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))}x"
             f"{int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))} @ "

@@ -24,6 +24,11 @@ class KameraConfig:
     tinggi: int = 480
     fps: int = 30                # fps yang diminta ke driver kamera
     fourcc: str = "MJPG"         # "MJPG" | "YUYV" | "" (biarkan driver)
+    # Kamera di motor dipasang miring di dekat spion, jadi frame perlu diputar
+    # sebelum dinilai. Putaran dilakukan SEBELUM deteksi, bukan hanya di
+    # tampilan: MediaPipe mencari wajah tegak, dan wajah miring 90 derajat
+    # praktis tidak terdeteksi sama sekali.
+    putar: int = 0               # 0 | 90 | 180 | 270 derajat searah jarum jam
     flip_horizontal: bool = True  # tampilan cermin, lebih natural untuk pengguna
 
 

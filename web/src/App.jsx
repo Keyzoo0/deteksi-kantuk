@@ -59,8 +59,10 @@ export default function App() {
           <TabsTrigger value="info">Info</TabsTrigger>
         </TabsList>
         <TabsContent value="dasbor"><Dasbor data={data} /></TabsContent>
-        <TabsContent value="setelan"><Setelan /></TabsContent>
-        <TabsContent value="info"><Info info={info} setInfo={setInfo} setVersiLogo={setVersiLogo} /></TabsContent>
+        <TabsContent value="setelan">
+          <Setelan info={info} setInfo={setInfo} setVersiLogo={setVersiLogo} />
+        </TabsContent>
+        <TabsContent value="info"><Info info={info} versiLogo={versiLogo} /></TabsContent>
       </Tabs>
     </div>
   )
