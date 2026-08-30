@@ -1,11 +1,25 @@
-# Deteksi Rasa Kantuk (Drowsiness Detection)
+# Asisten Monitoring Rasa Kantuk (Drowsiness Detection)
 
-Deteksi rasa kantuk secara real-time dari **mata** dan **mulut** menggunakan webcam.
-Target akhir: **Raspberry Pi 5 (8 GB) + webcam USB**, tetapi program ini juga bisa
-langsung dicoba di PC/laptop Linux.
+Deteksi rasa kantuk secara real-time dari **mata** dan **mulut** menggunakan webcam,
+lengkap dengan **asisten suara Bahasa Indonesia** yang menuntun dan memperingatkan
+pengemudi lewat speaker. Target akhir: **Raspberry Pi 5 (8 GB) + webcam Logitech
+USB**, tetapi program ini juga bisa langsung dicoba di PC/laptop Linux.
 
 Status ditampilkan sebagai teks besar di jendela video: **AMAN** (hijau) atau
 **KANTUK** (merah), lengkap dengan alasannya.
+
+Alurnya tiga tahap:
+
+| Tahap | Yang terjadi | Suara |
+|---|---|---|
+| **SIAGA** | Kamera belum menyala, menunggu tombol **SPASI** | *"Halo, saya asisten pribadi monitoring rasa kantuk saat berkendara. Tekan tombol spasi untuk memulai sistem."* |
+| **KALIBRASI** | Kamera menyala, menunggu wajah masuk bingkai lalu merekam baseline | *"Arahkan kamera ke wajah Anda"* (tiap 5 detik selama wajah belum terlihat), lalu *"Memulai kalibrasi. Arahkan dan tahan wajah Anda menghadap ke kamera"*, ditutup *"Kalibrasi selesai. Sistem monitoring dimulai."* |
+| **MONITOR** | Penilaian kantuk tiap frame | *"Anda sedang mengantuk, silakan menepi"* saat mengantuk; *"Arahkan kamera ke wajah Anda"* saat wajah keluar bingkai |
+
+Bila wajah **hilang lebih dari 1 menit** saat monitoring, sistem mengucapkan
+*"Wajah tidak terdeteksi lebih dari satu menit. Sistem dimatikan"*, mencetak
+ringkasan sesi, mematikan kamera, dan kembali ke SIAGA — tekan **SPASI** untuk
+memulai lagi dari awal.
 
 ---
 
@@ -64,6 +78,56 @@ sesaat (bicara) tidak dihitung sebagai menguap.
 
 ---
 
+## Asisten suara
+
+Peringatan diucapkan dari **berkas WAV yang sudah jadi** di folder `suara/`,
+bukan disintesis saat program berjalan. Alasannya:
+
+* Suaranya **TTS neural Bahasa Indonesia** (`id-ID-GadisNeural` /
+  `id-ID-ArdiNeural`) — jauh lebih enak didengar daripada espeak yang robotik.
+* **Tidak perlu internet** dan hampir tanpa beban CPU saat berkendara; ini
+  penting di Raspberry Pi.
+* Peringatan **langsung berbunyi**, tanpa jeda sintesis.
+
+Kalau berkas WAV-nya hilang, program otomatis jatuh ke TTS sistem
+(`espeak-ng`/`spd-say`) — robotik, tetapi lebih baik daripada bisu.
+
+### Kapan bersuara
+
+| Pesan | Pemicu |
+|---|---|
+| "Anda sedang mengantuk, silakan menepi" | mata terpejam **> 3 detik**, atau menguap **> 2 detik** |
+| "Arahkan kamera ke wajah Anda" | wajah tidak terlihat **> 3 detik** |
+| "Wajah tidak terdeteksi… sistem dimatikan" | wajah hilang **> 60 detik** saat monitoring |
+
+Pesan yang sama paling cepat diulang tiap **5 detik** (`jeda_ulang_detik`),
+jadi asisten tidak cerewet. Ambang suara sengaja **lebih longgar** daripada
+ambang tulisan KANTUK di layar (terpejam 1,2 detik): layar boleh bereaksi
+cepat, speaker baru bicara kalau kondisinya sudah meyakinkan.
+
+### Uji dan ganti suara
+
+```bash
+.venv/bin/python tools/cek_suara.py              # dengarkan semua pesan
+.venv/bin/python tools/cek_suara.py --pesan mengantuk
+```
+
+Ganti ke suara laki-laki: setel `"voice": "ardi"` di `config.json` (berkasnya
+sudah ikut di folder `suara/`). Untuk mengganti **kalimatnya**, rekam ulang —
+butuh internet dan dua paket tambahan yang tidak dipakai program utama:
+
+```bash
+uv pip install edge-tts soundfile
+.venv/bin/python tools/buat_suara.py             # semua pesan, dua suara
+.venv/bin/python tools/buat_suara.py --hanya mengantuk \
+    --teks mengantuk="Bapak sudah mengantuk, tolong menepi"
+```
+
+Kalimat baku pesan ada di `src/suara.py` (`PESAN`) — satu sumber untuk berkas
+WAV maupun TTS cadangan.
+
+---
+
 ## Instalasi
 
 ### Di PC/laptop Linux
@@ -77,6 +141,59 @@ sesaat (bicara) tidak dihitung sebagai menguap.
 > Kalau sistem Anda hanya punya Python 3.13/3.14 (mis. Ubuntu 26.04), `setup.sh`
 > otomatis mengunduh Python 3.12 lewat [`uv`](https://github.com/astral-sh/uv) ke
 > folder pengguna — **tanpa sudo** dan tanpa mengubah Python bawaan sistem.
+
+### Menyiapkan Raspberry Pi tanpa monitor (headless)
+
+Kalau Pi tidak punya monitor/keyboard, siapkan kartu SD-nya dulu dari laptop
+ini — **tancapkan kartu SD hasil Raspberry Pi Imager**, lalu:
+
+```bash
+sudo ./tools/siapkan_raspi.sh                       # pakai WiFi laptop ini
+sudo ./tools/siapkan_raspi.sh --pengguna haris --sandi 1 --nama-host raspberrypi
+```
+
+Skrip itu mencari partisi kartu SD lewat label (`bootfs`/`rootfs`, bukan
+menebak `/dev/sdX`), menolak jalan bila yang ketemu ternyata disk sistem, lalu:
+
+* membuat **pengguna + sandi** (hash SHA-512, bukan teks polos),
+* **menyalakan SSH** (berkas `ssh`, sekaligus symlink `ssh.service` di rootfs),
+* menyalin **SSID dan sandi WiFi laptop ini** dari NetworkManager — sandinya
+  dibaca langsung oleh skrip dan tidak pernah ditampilkan di layar,
+* memasang **kunci SSH publik** Anda supaya login tanpa sandi (lewat
+  `[ssh] authorized_keys` dan `/etc/skel/.ssh/authorized_keys`),
+* mengisi **kode negara WiFi** — tanpa ini radio WiFi Raspberry Pi OS terkunci.
+
+Cara pengaturannya menyesuaikan citra — diperiksa dari rootfs kartu, bukan
+ditebak dari versi OS:
+
+| Yang ada di citra | Cara yang dipakai |
+|---|---|
+| `raspberrypi-sys-mods/init_config` | `custom.toml` |
+| `raspberrypi-sys-mods/imager_custom` saja | `firstrun.sh` + `systemd.run=` di `cmdline.txt` (persis cara Raspberry Pi Imager), ditambah `userconf.txt` |
+| tidak keduanya | klasik: `userconf.txt` + `wpa_supplicant.conf` |
+
+Ini bukan detail sepele: **Raspberry Pi OS 13 (Trixie) menyediakan
+`imager_custom` tanpa `init_config`**, sehingga `custom.toml` diabaikan
+diam-diam — Pi ikut boot tanpa pengguna sama sekali dan tidak bisa di-SSH.
+Karena itu penentunya `init_config`, bukan `imager_custom`.
+
+SSH sendiri aman di semua jalur karena `sshswitch.service` bawaan citra membaca
+penanda `/boot/firmware/ssh`. Berkas `firstrun.sh` bawaan Imager (kalau Anda
+sempat mengisi opsi di Imager) dinonaktifkan lebih dulu agar tidak bentrok, dan
+`firstrun.sh` buatan skrip ini menghapus dirinya sendiri setelah boot pertama —
+termasuk sandi WiFi yang sempat tersimpan di dalamnya.
+
+Setelah kartu dilepas dan Pi dinyalakan, tunggu 1–2 menit (boot pertama
+memperluas partisi lalu reboot sendiri), lalu dari laptop:
+
+```bash
+ssh haris@raspberrypi.local
+# kalau .local tidak jalan, cari IP-nya di jaringan:
+ip neigh | grep -iE 'b8:27:eb|dc:a6:32|e4:5f:01|d8:3a:dd'   # MAC Raspberry Pi
+```
+
+Lewat kabel LAN caranya sama — Pi mengambil IP dari DHCP dan SSH-nya sudah
+menyala, jadi `ssh haris@raspberrypi.local` tetap berlaku.
 
 ### Di Raspberry Pi 5 (Raspberry Pi OS Bookworm)
 
@@ -136,8 +253,11 @@ Periode KANTUK  : 4
 ## Pemakaian
 
 ```bash
-./run.sh                      # kamera default (index 0)
-./run.sh --sumber 1           # pilih webcam lain
+./run.sh                      # webcam Logitech yang sedang tertancap
+./run.sh --langsung           # lewati layar siaga, sistem langsung menyala
+./run.sh --tanpa-suara        # matikan asisten suara (visual saja)
+./run.sh --sumber 1           # dahulukan index tertentu (tetap harus Logitech)
+./run.sh --merek ''           # terima kamera merek apa pun
 ./run.sh --sumber video.mp4   # uji dari file video
 ./run.sh --kalibrasi 6        # kalibrasi 6 detik
 ./run.sh --tanpa-jendela      # headless, status dicetak ke terminal
@@ -145,19 +265,38 @@ Periode KANTUK  : 4
 ./run.sh --verbose            # tampilkan pesan bawaan OpenCV/MediaPipe
 ```
 
-Tombol saat jendela aktif:
+Program hanya mau memakai **webcam Logitech yang sedang tertancap**. Node
+`/dev/videoN` disaring lewat `idVendor` USB (`046d`), bukan lewat namanya —
+C270 mendaftar sebagai `C270 HD WEBCAM` saja, tanpa kata "Logitech". Kalau
+webcam itu tidak ada, program berhenti dengan pesan yang jelas dan **tidak**
+diam-diam beralih ke kamera bawaan laptop, supaya hasil deteksi selalu berasal
+dari kamera yang sama. Nomor index di `config.json` sekadar pilihan pertama:
+kalau bergeser setelah cabut-tancap, node Logitech lain dipakai otomatis.
+Merek lain bisa diterima lewat `--merek` atau kunci `kamera.merek` di
+`config.json` (isi nama merek, `idVendor`, potongan nama perangkat, atau
+kosongkan untuk menerima semua). Analisis berkas video tidak terpengaruh
+penyaringan ini.
+
+Tombol:
 
 | Tombol | Fungsi |
 |---|---|
+| `spasi` | nyalakan sistem dari layar SIAGA |
 | `q` / `Esc` | keluar |
 | `c` | kalibrasi ulang |
 | `d` | tampilkan/sembunyikan landmark |
+
+Di mode headless tombol dibaca langsung dari terminal (tanpa perlu Enter).
+Kalau stdin bukan terminal — mis. dijalankan systemd atau keluarannya
+dialihkan ke berkas — SPASI mustahil ditekan, jadi sistem langsung menyala
+sendiri, sama seperti `--langsung`.
 
 Bingung webcam mana yang aktif, atau gambar terlihat rusak:
 
 ```bash
 .venv/bin/python tools/cek_kamera.py   # ukur FPS nyata + frame robek tiap format
-.venv/bin/python tools/uji_logika.py   # uji logika penilaian kantuk (tanpa kamera)
+.venv/bin/python tools/cek_suara.py    # dengarkan semua pesan asisten
+.venv/bin/python tools/uji_logika.py   # uji penilaian kantuk + asisten (tanpa kamera)
 ```
 
 `cek_kamera.py` mencoba tiap kombinasi format/resolusi lalu menyarankan yang
@@ -172,7 +311,8 @@ Semua ambang ada di `config.json` — bisa diubah tanpa menyentuh kode.
 ```jsonc
 {
   "kamera": {
-    "sumber": "0",            // index webcam atau path file video
+    "sumber": "2",            // index webcam atau path file video
+    "merek": "logitech",      // hanya kamera merek ini; "" = terima semua
     "lebar": 640, "tinggi": 480, "fps": 30,
     "fourcc": "MJPG",         // "MJPG" | "YUYV" | "" (biarkan driver)
     "flip_horizontal": true   // tampilan cermin
@@ -188,10 +328,20 @@ Semua ambang ada di `config.json` — bisa diubah tanpa menyentuh kode.
     "mar_margin_baseline": 0.30,     // jarak minimum dari baseline tiap orang
     "durasi_menguap_detik": 0.9,
     "kantuk_saat_menguap": true,     // KANTUK selama menguap berlangsung
-    "menguap_per_menit_kantuk": 0,   // 0 = aturan laju menguap dimatikan
-    "menguap_per_menit_kantuk": 3
+    "menguap_per_menit_kantuk": 0    // 0 = aturan laju menguap dimatikan
+  },
+  "suara": {
+    "aktif": true,
+    "voice": "gadis",                // "gadis" (perempuan) | "ardi" (laki-laki)
+    "folder": "suara",               // tempat berkas <pesan>-<voice>.wav
+    "terpejam_detik": 3.0,           // terpejam selama ini -> bersuara
+    "menguap_detik": 2.0,            // menguap selama ini -> bersuara
+    "wajah_hilang_detik": 3.0,       // wajah hilang selama ini -> menuntun
+    "jeda_ulang_detik": 5.0,         // pesan sama paling cepat diulang
+    "pemutar": ""                    // kosong = deteksi otomatis (pw-play/aplay/...)
   },
   "kalibrasi_detik": 4.0,
+  "mati_tanpa_wajah_detik": 60.0,    // wajah hilang selama ini -> sistem mati
   "tampilkan_jendela": true
 }
 ```
@@ -218,7 +368,12 @@ terasa mengganggu saat diuji pada rekaman nyata.
 | **KANTUK** muncul padahal melek | Baseline terlanjur diambil saat mata setengah menutup. Tekan `c` untuk kalibrasi ulang sambil menatap kamera. |
 | FPS rendah padahal CPU santai | Batasnya di webcam, bukan program (inferensi hanya ±11 ms). Cek dengan `tools/cek_kamera.py`. |
 | **Jendela terbuka sebentar lalu mati**, muncul `VIDIOC_REQBUFS: errno=19 (No such device)` | Webcam lepas dari bus USB. Lihat bagian di bawah. |
-| `Kamera '0' tidak bisa dibuka` padahal tadi jalan | Nomor `/dev/videoN` bergeser setelah kamera lepas-sambung. Program sudah menyapu index lain secara otomatis; kalau tetap gagal, kameranya memang sedang tidak ada di sistem. |
+| Tidak ada suara sama sekali | Jalankan `tools/cek_suara.py`. Baris `Suara :` saat program mulai menyebut sumber dan pemutarnya; kalau tertulis "TIDAK ADA pemutar suara", pasang `pw-play`/`paplay`/`aplay`, atau tulis pemutar pilihan Anda di `suara.pemutar`. |
+| Suaranya robotik | Berkas WAV di `suara/` tidak ketemu sehingga jatuh ke TTS sistem. Cek `folder`/`voice` di `config.json`, atau rekam ulang dengan `tools/buat_suara.py`. |
+| Asisten terlalu cerewet | Naikkan `suara.terpejam_detik`/`menguap_detik`, atau perbesar `jeda_ulang_detik`. Matikan sepenuhnya dengan `--tanpa-suara`. |
+| Sistem mati sendiri padahal masih dipakai | Wajah tidak terlihat >60 detik (kamera bergeser, terlalu gelap). Perbesar `mati_tanpa_wajah_detik`, atau perbaiki posisi kamera. |
+| `Kamera logitech tidak terpasang` | Webcam Logitech-nya memang tidak sedang tertancap — program sengaja berhenti, bukan diam-diam pindah ke kamera bawaan laptop. Tancapkan webcamnya, atau jalankan dengan `--merek ''` bila memang ingin memakai kamera lain. |
+| `Kamera '0' tidak bisa dibuka` padahal tadi jalan | Nomor `/dev/videoN` bergeser setelah kamera lepas-sambung. Program sudah menyapu node Logitech yang lain secara otomatis; kalau tetap gagal, kameranya memang sedang tidak ada di sistem. |
 
 ### Webcam lepas-sambung sendiri (USB autosuspend)
 
@@ -251,16 +406,22 @@ tanpa kehilangan hasil kalibrasi maupun hitungan PERCLOS.
 ```
 deteksi-kantuk/
 ├── src/
-│   ├── main.py       # loop utama: kamera -> deteksi -> penilaian -> tampilan
+│   ├── main.py       # mesin keadaan SIAGA -> KALIBRASI -> MONITOR
 │   ├── config.py     # dataclass konfigurasi + pembaca config.json
-│   ├── kamera.py     # pembukaan webcam (V4L2, MJPG) + penanganan galat
+│   ├── kamera.py     # pilih webcam Logitech (V4L2, MJPG) + penanganan galat
 │   ├── deteksi.py    # MediaPipe Face Mesh -> EAR & MAR
 │   ├── metrik.py     # kalibrasi, PERCLOS, hitung kedip & menguap, level kantuk
-│   ├── tampilan.py   # overlay OpenCV (kontur mata/mulut, panel metrik, banner)
+│   ├── tampilan.py   # overlay OpenCV (layar siaga, kontur, panel metrik, banner)
+│   ├── suara.py      # asisten suara: pesan, antrean, pemutar WAV/TTS cadangan
+│   ├── tombol.py     # baca tombol dari terminal untuk mode headless
 │   └── senyap.py     # meredam pesan bawaan OpenCV/MediaPipe/libjpeg
+├── suara/            # berkas WAV pesan asisten (gadis & ardi)
 ├── tools/
 │   ├── cek_kamera.py            # ukur FPS nyata & frame robek tiap format
-│   ├── uji_logika.py            # uji penilaian kantuk dengan frame sintetis
+│   ├── cek_suara.py             # putar tiap pesan asisten untuk uji speaker
+│   ├── buat_suara.py            # rekam ulang pesan dengan TTS neural (butuh internet)
+│   ├── uji_logika.py            # uji penilaian kantuk + asisten (frame sintetis)
+│   ├── siapkan_raspi.sh         # siapkan kartu SD Pi: user, SSH, WiFi (headless)
 │   └── perbaiki_kamera_usb.sh   # matikan USB autosuspend (butuh sudo)
 ├── config.json
 ├── setup.sh / setup_raspi.sh / run.sh
