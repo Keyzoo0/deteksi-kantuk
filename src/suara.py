@@ -28,20 +28,39 @@ SALAM = "salam"
 ARAHKAN = "arahkan-kamera"
 MULAI_KALIBRASI = "mulai-kalibrasi"
 SIAP = "siap"
-MENGANTUK = "mengantuk"
+MENGANTUK = "mengantuk"           # alarm tingkat 1
+TEKAN_TOMBOL = "tekan-tombol"     # alarm tingkat 2
+TERKIRIM = "terkirim"             # alarm tingkat 3
+DIAKUI = "diakui"                 # tombol ditekan
+BERHENTI = "berhenti"             # kendaraan menepi (dideteksi GPS)
+ISTIRAHAT = "istirahat"           # sistem dimatikan pengguna lewat tombol
 MATI = "mati"
+SIRENE = "sirene"                 # nada, bukan ucapan -- tanpa varian suara
+BIP = "bip"                       # isyarat: tahanan 3 detik tercapai
+BIP_GANDA = "bip-ganda"           # isyarat: tahanan 8 detik tercapai
+
+# Berkas yang sama untuk semua pilihan voice (nada, bukan ucapan).
+TANPA_VOICE = (SIRENE, BIP, BIP_GANDA)
 
 # Kalimat setiap pesan. Dipakai dua tempat: `tools/buat_suara.py` merekamnya
 # jadi WAV, dan TTS cadangan mengucapkannya langsung bila WAV-nya hilang.
 PESAN: dict[str, str] = {
     SALAM: ("Halo, saya adalah asisten pribadi monitoring rasa kantuk saat "
-            "berkendara. Tekan tombol spasi untuk memulai sistem."),
+            "berkendara. Tahan tombol tiga detik untuk memulai sistem."),
     ARAHKAN: "Arahkan kamera ke wajah Anda.",
     MULAI_KALIBRASI: ("Memulai kalibrasi. Arahkan dan tahan wajah Anda "
                       "menghadap ke kamera."),
     SIAP: "Kalibrasi selesai. Sistem monitoring dimulai.",
     MENGANTUK: "Anda sedang mengantuk, silakan menepi.",
+    TEKAN_TOMBOL: "Bahaya! Tekan tombol untuk mematikan alarm.",
+    TERKIRIM: "Lokasi Anda sudah dikirim ke kerabat.",
+    DIAKUI: "Terima kasih. Silakan menepi dan beristirahat.",
+    BERHENTI: "Kendaraan sudah berhenti. Alarm dimatikan.",
+    ISTIRAHAT: "Sistem dimatikan. Silakan beristirahat.",
     MATI: "Wajah tidak terdeteksi lebih dari satu menit. Sistem dimatikan.",
+    SIRENE: "",                   # nada, dibuat tools/buat_suara.py
+    BIP: "",
+    BIP_GANDA: "",
 }
 
 # Pemutar berkas WAV, diurutkan dari yang paling ringan. pw-play/paplay ada di
@@ -72,11 +91,16 @@ class AsistenSuara:
         self._proses: subprocess.Popen | None = None
         self._terakhir: dict[str, float] = {}
         self._antrean: list[str] = []
+        self._cek_sink = -1e9
+        self._sink_hidup = True
 
         folder = Path(cfg.folder)
         if not folder.is_absolute():
             folder = akar / folder
-        self._berkas = {k: folder / f"{k}-{cfg.voice}.wav" for k in PESAN}
+        self._berkas = {
+            k: folder / (f"{k}.wav" if k in TANPA_VOICE else f"{k}-{cfg.voice}.wav")
+            for k in PESAN
+        }
         self._ada = {k: v for k, v in self._berkas.items() if v.exists()}
         self._pemutar = self._cari([(cfg.pemutar, [])] if cfg.pemutar else list(PEMUTAR))
         self._tts = self._cari(list(TTS))
@@ -159,6 +183,43 @@ class AsistenSuara:
                 return True
             return False
         return self._mulai(kunci)
+
+    def perangkat_hidup(self) -> bool:
+        """Adakah keluaran audio yang benar-benar siap dipakai?
+
+        Dipakai tangga alarm: kalau speaker/headset tidak tersambung, menunggu
+        pengendara menekan tombol itu sia-sia karena dia tidak mendengar apa
+        pun. Pemeriksaan di-cache 10 detik supaya tidak memanggil proses luar
+        tiap frame.
+
+        Batasnya jujur saja: yang diperiksa hanya "ada sink yang bukan dummy".
+        Kalau headset Bluetooth putus lalu audio jatuh ke HDMI, keadaan itu
+        tidak terdeteksi dari sini.
+        """
+        if not self.aktif:
+            return False
+        sekarang = time.monotonic()
+        if sekarang - self._cek_sink < 10.0:
+            return self._sink_hidup
+        self._cek_sink = sekarang
+        self._sink_hidup = self._periksa_sink()
+        return self._sink_hidup
+
+    @staticmethod
+    def _periksa_sink() -> bool:
+        for perintah in (["wpctl", "inspect", "@DEFAULT_AUDIO_SINK@"],
+                         ["pactl", "get-default-sink"]):
+            jalur = shutil.which(perintah[0])
+            if not jalur:
+                continue
+            try:
+                hasil = subprocess.run([jalur, *perintah[1:]], capture_output=True,
+                                       timeout=3)
+            except (OSError, subprocess.SubprocessError):
+                return True          # gagal memeriksa bukan bukti audio mati
+            teks = (hasil.stdout + hasil.stderr).decode("utf-8", "replace").lower()
+            return hasil.returncode == 0 and "auto_null" not in teks and "dummy" not in teks
+        return True                  # tidak ada alat pemeriksa -> anggap hidup
 
     def layani(self) -> None:
         """Panggil tiap frame: jalankan pesan berikutnya begitu speaker bebas."""

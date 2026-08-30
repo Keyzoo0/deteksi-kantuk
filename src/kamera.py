@@ -177,7 +177,8 @@ def pastikan_kamera_ada(cfg: KameraConfig) -> None:
     ketika pengguna menekan SPASI.
     """
     merek = (cfg.merek or "").strip()
-    if not str(cfg.sumber).isdigit():
+    if not str(cfg.sumber).strip().lower() in ("auto",) and \
+            not str(cfg.sumber).lstrip("-").isdigit():
         return
     if not perangkat_merek(merek):
         raise RuntimeError(_pesan_tidak_ada(merek or "apa pun"))
@@ -196,7 +197,9 @@ def buka_kamera(cfg: KameraConfig) -> cv2.VideoCapture:
     di-reset, atau setelah reboot -- node lain milik merek yang sama dicoba
     otomatis.
     """
-    if not str(cfg.sumber).isdigit():                  # file video / URL
+    if str(cfg.sumber).strip().lower() == "auto":
+        cfg.sumber = "-1"                              # tidak ada index pilihan
+    if not str(cfg.sumber).lstrip("-").isdigit():      # file video / URL
         cap = cv2.VideoCapture(str(cfg.sumber))
         if not cap.isOpened():
             cap.release()
@@ -215,7 +218,7 @@ def buka_kamera(cfg: KameraConfig) -> cv2.VideoCapture:
     for p in urutan:
         cap = _coba_buka(p.index, cfg)
         if cap is not None:
-            if p.index != diminta:
+            if diminta >= 0 and p.index != diminta:
                 print(f"[kamera] index {diminta} tidak dipakai, "
                       f"memakai {p.label()}.")
             cfg.sumber = str(p.index)

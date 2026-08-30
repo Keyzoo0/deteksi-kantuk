@@ -12,7 +12,30 @@ cd "$(dirname "$0")"
 
 echo ">> Memasang paket sistem (butuh sudo)..."
 sudo apt-get update
-sudo apt-get install -y python3-venv python3-dev libgl1 libglib2.0-0 v4l-utils alsa-utils
+sudo apt-get install -y python3-venv python3-dev libgl1 libglib2.0-0 v4l-utils \
+    alsa-utils python3-gpiozero python3-lgpio
+
+# Tombol "tahan 8 detik" harus bisa mematikan Pi tanpa sandi: alat ini dipakai
+# tanpa monitor maupun keyboard, dan mencabut daya begitu saja merusak kartu SD.
+echo ">> Memberi izin poweroff/reboot tanpa sandi untuk $USER..."
+printf '%s ALL=(ALL) NOPASSWD: /sbin/poweroff, /sbin/reboot, /usr/sbin/poweroff, /usr/sbin/reboot\n' \
+    "$USER" | sudo tee "/etc/sudoers.d/020_${USER}-poweroff" >/dev/null
+sudo chmod 440 "/etc/sudoers.d/020_${USER}-poweroff"
+
+# gpiozero + lgpio tidak bisa dipasang lewat pip (wheel lgpio gagal dibangun
+# tanpa pustaka C-nya), tetapi Raspberry Pi OS sudah membawanya sebagai paket
+# sistem. Modulnya ditautkan ke venv supaya tetap terpakai tanpa
+# --system-site-packages yang ikut menarik paket lain.
+tautkan_gpio() {
+  local sp
+  sp=$(.venv/bin/python -c "import site; print(site.getsitepackages()[0])")
+  for m in gpiozero colorzero lgpio.py; do
+    [ -e "/usr/lib/python3/dist-packages/$m" ] && ln -sf "/usr/lib/python3/dist-packages/$m" "$sp/"
+  done
+  for so in /usr/lib/python3/dist-packages/_lgpio*.so; do
+    [ -e "$so" ] && ln -sf "$so" "$sp/"
+  done
+}
 
 # --- pilih interpreter -------------------------------------------------------
 PY=""
@@ -44,6 +67,7 @@ if ! pasang "$PY" || ! .venv/bin/python -c "import cv2, mediapipe" 2>/dev/null; 
   pasang "$(uv python find 3.12)"
 fi
 
+tautkan_gpio
 echo ""
 .venv/bin/python -c "import cv2, mediapipe, sys; print('Python', sys.version.split()[0], '| OpenCV', cv2.__version__, '| MediaPipe', mediapipe.__version__)"
 echo ">> Mengunduh model face_landmarker (sekali saja, ~3,8 MB)..."
