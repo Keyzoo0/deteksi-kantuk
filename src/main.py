@@ -234,6 +234,8 @@ def _loop(arg, cfg: Config, detektor: DetektorWajah, asisten: AsistenSuara,
     fps_berkas = 25.0
     kode = 0
     salam_diucapkan = False
+    alat_terakhir = 0.0
+    nama_kamera = ""
 
     def tampilkan_frame(frame) -> int:
         """Tampilkan frame (bila ada jendela) dan kembalikan tombol papan ketik."""
@@ -276,7 +278,7 @@ def _loop(arg, cfg: Config, detektor: DetektorWajah, asisten: AsistenSuara,
 
     def nyalakan() -> bool:
         """Buka kamera dan mulai sesi baru. False bila kameranya tidak ada."""
-        nonlocal cap, sesi, keadaan, fps_berkas, gagal_baca, t_lalu
+        nonlocal cap, sesi, keadaan, fps_berkas, gagal_baca, t_lalu, nama_kamera
         try:
             cap = buka_kamera(cfg.kamera)
         except RuntimeError as e:
@@ -290,12 +292,14 @@ def _loop(arg, cfg: Config, detektor: DetektorWajah, asisten: AsistenSuara,
         # Sumber berkas tidak punya perangkat untuk dicari namanya.
         asal = (f"berkas {cfg.kamera.sumber}" if dari_berkas
                 else cari_perangkat(int(cfg.kamera.sumber)).label())
+        nama_kamera = (str(cfg.kamera.sumber) if dari_berkas
+                       else cari_perangkat(int(cfg.kamera.sumber)).nama)
         print(f"\n[sistem] menyala -- {asal} -> {info_kamera(cap)}")
         return True
 
     def matikan(alasan: str, sapa_lagi: bool = True) -> None:
         """Akhiri sesi: cetak ringkasan, lepas kamera, kembali ke layar siaga."""
-        nonlocal cap, sesi, keadaan, salam_diucapkan
+        nonlocal cap, sesi, keadaan, salam_diucapkan, nama_kamera
         print(f"\n[sistem] {alasan}")
         if sesi is not None and sesi.penilai is not None:
             _cetak_ringkasan(sesi, arg.rekam)
@@ -303,6 +307,7 @@ def _loop(arg, cfg: Config, detektor: DetektorWajah, asisten: AsistenSuara,
             cap.release()
             cap = None
         sesi = None
+        nama_kamera = ""
         keadaan = SIAGA
         # Sapaan panjang tidak diulang kalau pengguna sendiri yang mematikan:
         # dia baru saja mendengar "sistem dimatikan, silakan beristirahat".
@@ -332,7 +337,12 @@ def _loop(arg, cfg: Config, detektor: DetektorWajah, asisten: AsistenSuara,
                                             "Tahan tombol 3 detik untuk memulai")
                 # Halaman web tetap menampilkan sesuatu saat sistem siaga,
                 # supaya jelas bedanya "belum dinyalakan" dengan "rusak".
-                web.perbarui(bingkai_siaga, {"keadaan": "siaga"}, None, time.monotonic())
+                sekarang = time.monotonic()
+                web.perbarui(bingkai_siaga, {"keadaan": SIAGA}, None, sekarang)
+                if sekarang - alat_terakhir > 2.0:
+                    alat_terakhir = sekarang
+                    web.set_alat(_status_alat(cfg, asisten, gps, notif, SIAGA,
+                                              None, sekarang, ""))
                 peristiwa = baca_tombol(bingkai_siaga, time.monotonic())
                 if peristiwa == "keluar":
                     break
@@ -405,6 +415,15 @@ def _loop(arg, cfg: Config, detektor: DetektorWajah, asisten: AsistenSuara,
             if notif.siap and not notif.daring:
                 asisten.ucap(TANPA_INTERNET,
                              jeda=cfg.suara.jeda_tanpa_internet_detik)
+
+            # Status perangkat cukup diperbarui tiap 2 detik: sebagian
+            # pemeriksaannya memanggil proses luar (wpctl), terlalu mahal
+            # untuk dijalankan tiap frame.
+            sekarang = time.monotonic()
+            if sekarang - alat_terakhir > 2.0:
+                alat_terakhir = sekarang
+                web.set_alat(_status_alat(cfg, asisten, gps, notif, keadaan,
+                                          sesi, t, nama_kamera))
 
             catatan = ""
             # --- KALIBRASI -----------------------------------------------
@@ -567,6 +586,47 @@ _SUARA_ALARM = {
 def _mainkan(asisten: AsistenSuara, peristiwa: str) -> None:
     for pesan in _SUARA_ALARM.get(peristiwa, ()):
         asisten.ucap(pesan, antre=True, paksa=True)
+
+
+def _status_alat(cfg: Config, asisten: AsistenSuara, gps: PembacaGps,
+                 notif: Notifikasi, keadaan: str, sesi: Sesi | None,
+                 t: float, kamera: str = "") -> dict:
+    """Kondisi perangkat & layanan untuk halaman web.
+
+    Selalu terisi, termasuk saat sistem masih siaga: halaman yang kosong tidak
+    bisa dibedakan dari alat yang rusak, padahal justru saat itulah pengguna
+    perlu memastikan kamera, suara, GPS, dan jaringan sudah siap sebelum jalan.
+    """
+    posisi = gps.posisi
+    if not cfg.gps.aktif or gps.keterangan.startswith("tidak tersedia"):
+        kabar_gps = "tidak aktif"
+    elif posisi.valid:
+        kabar_gps = f"{posisi.kecepatan_kmh:.0f} km/jam, {posisi.satelit} satelit"
+    else:
+        kabar_gps = f"belum fix ({posisi.satelit} satelit)"
+
+    pesan = {
+        SIAGA: "Sistem siaga — tahan tombol 3 detik untuk memulai",
+        KALIBRASI: ("Menunggu wajah terdeteksi"
+                    if sesi and not sesi.kalibrator.dimulai
+                    else f"Kalibrasi {sesi.kalibrator.sisa_detik(t):.1f} detik lagi"
+                    if sesi else "Kalibrasi"),
+    }.get(keadaan, "")
+    tingkat = sesi.alarm.tingkat if sesi and sesi.alarm else 0
+    return {
+        "keadaan": keadaan,
+        "pesan": pesan,
+        "kamera": kamera or f"{cfg.kamera.merek or 'apa pun'} (belum dibuka)",
+        # Dibedakan: sengaja dimatikan itu wajar, tidak ada perangkat itu
+        # gawat -- di motor, suara satu-satunya cara alat memperingatkan.
+        "suara": ("dimatikan" if not asisten.aktif
+                  else "siap" if asisten.perangkat_hidup() else "TIDAK ADA"),
+        "gps": kabar_gps,
+        "internet": "tersambung" if notif.daring else "putus",
+        "kerabat": (f"{notif.jumlah_kerabat} terdaftar" if notif.siap
+                    else "belum ada"),
+        "alarm": f"tingkat {tingkat}" if tingkat else "tenang",
+    }
 
 
 def _suapi_web(web: KeadaanBersama, frame, sesi: Sesi, st: Status, fps: float,

@@ -87,6 +87,10 @@ class Notifikasi:
         return self._jalan and bool(self._chat)
 
     @property
+    def jumlah_kerabat(self) -> int:
+        return len(self._chat)
+
+    @property
     def daring(self) -> bool:
         """Apakah Telegram bisa dihubungi?
 
