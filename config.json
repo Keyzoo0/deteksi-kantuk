@@ -1,6 +1,7 @@
 {
   "kamera": {
-    "sumber": "0",
+    "sumber": "2",
+    "merek": "logitech",
     "lebar": 640,
     "tinggi": 480,
     "fps": 30,
