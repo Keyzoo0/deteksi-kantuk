@@ -18,3 +18,7 @@ antrean_notifikasi.jsonl
 # Raspberry Pi tidak perlu Node sama sekali.
 web/node_modules/
 data/
+
+# Skrip remote pribadi (berisi nama host/akses Pi) -- jangan ikut repo
+remotesshraspi.sh
+remoteclauderaspi.sh
