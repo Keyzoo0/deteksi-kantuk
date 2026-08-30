@@ -90,6 +90,10 @@ class WebConfig:
     mutu_jpeg: int = 60
     jeda_sampel_detik: float = 1.0       # satu titik grafik per detik
     jendela_detik: float = 7200.0        # panjang grafik: 2 jam
+    folder_web: str = "web/dist"         # hasil `npm run build` di folder web/
+    berkas_info: str = "info.json"       # isi tab Info, bisa diubah dari web
+    logo_bawaan: str = "aset/logo-undip.png"
+    logo_unggah: str = "data/logo.png"   # logo yang diunggah pengguna
 
 
 @dataclass

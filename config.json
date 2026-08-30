@@ -39,7 +39,11 @@
     "fps_video": 5,
     "mutu_jpeg": 60,
     "jeda_sampel_detik": 1.0,
-    "jendela_detik": 7200.0
+    "jendela_detik": 7200.0,
+    "folder_web": "web/dist",
+    "berkas_info": "info.json",
+    "logo_bawaan": "aset/logo-undip.png",
+    "logo_unggah": "data/logo.png"
   },
   "notifikasi": {
     "aktif": true,

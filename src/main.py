@@ -191,7 +191,7 @@ def _jalankan(arg: argparse.Namespace) -> int:
     print(f"GPS      : {gps.keterangan}")
     notif = Notifikasi(cfg.notifikasi, AKAR)
     print(f"Kerabat  : {notif.keterangan}")
-    keadaan_web = KeadaanBersama(cfg.web)
+    keadaan_web = KeadaanBersama(cfg.web, AKAR)
     server, ket_web = mulai_server(keadaan_web)
     if server is not None:
         import socket

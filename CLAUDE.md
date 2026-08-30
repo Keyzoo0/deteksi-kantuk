@@ -76,6 +76,12 @@ matikan Pi dengan menahan tombol 8 detik sebelum baterai kosong.
 | 3 | Telegram: antrean offline, foto di tingkat 3, daftar kerabat | selesai, teks & foto teruji sampai |
 | 4 | Web UI: video, grafik 2 jam, riwayat | selesai |
 | 5 | Panel Bluetooth/WiFi/daya + autostart systemd | selesai |
+| 6 | Antarmuka Vite + React + shadcn/ui, tab Dashboard & Info | selesai |
+
+Antarmuka ada di `web/` (Vite + React + shadcn/ui + Tailwind v4). Pi hanya
+menyajikan `web/dist` yang ikut masuk repo — Pi tidak punya Node. Setelah
+mengubah antarmuka: `cd web && npm run build`, lalu
+`rsync -az --delete web/dist/ raspi:~/deteksi-kantuk/web/dist/`.
 
 Belum dikerjakan: pemakaian malam hari (butuh kamera NoIR + LED inframerah),
 kata sandi untuk web UI, dan kanal notifikasi selain Telegram (WhatsApp/SMS).

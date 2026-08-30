@@ -13,3 +13,8 @@ model/*.task
 # Token bot & daftar kerabat -- JANGAN pernah masuk repo
 rahasia.json
 antrean_notifikasi.jsonl
+
+# Hasil build antarmuka: node_modules tidak ikut, tapi web/dist IKUT supaya
+# Raspberry Pi tidak perlu Node sama sekali.
+web/node_modules/
+data/

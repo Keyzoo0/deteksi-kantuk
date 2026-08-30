@@ -1,0 +1,23 @@
+{
+  "judul": "Perancangan Smart Helmet Berbasis Multi-Sensor untuk Sistem Peringatan Dini Kondisi Hujan dan Kantuk Pada Pengendara Sepeda Motor",
+  "jenis_dokumen": "PROPOSAL",
+  "nomor_dokumen": "",
+  "nomor_revisi": "03",
+  "nama_file": "B100-TA2526-Smart Helmet",
+  "tanggal_terbit": "",
+  "unit_penerbit": "Departemen Teknik Elektro Undip",
+  "jumlah_halaman": "76",
+  "universitas": "UNIVERSITAS DIPONEGORO – FAKULTAS TEKNIK",
+  "departemen": "DEPARTEMEN TEKNIK ELEKTRO",
+  "jurusan": "Teknik Elektro",
+  "alamat": "Jl. Prof. H. Soedarto, SH, Tembalang, Semarang 50275",
+  "kontak": "Telp/Faks. (024)-7460057  e-mail: departemen@elektro.undip.ac.id",
+  "mahasiswa": [
+    {"nama": "Muhammad Diaz Akbar", "nim": "21060121140196"},
+    {"nama": "Haris Geovanni", "nim": "21060121140176"}
+  ],
+  "pembimbing": [
+    {"peran": "Pembimbing Utama", "nama": "Imam Santoso, S.T., M.T.", "nip": "197012031997021001"},
+    {"peran": "Pembimbing Pendamping", "nama": "Ir. Budi Setiyono, S.T., M.T.", "nip": "197005212000121001"}
+  ]
+}
