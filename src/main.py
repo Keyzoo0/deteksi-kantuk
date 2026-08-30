@@ -34,7 +34,8 @@ from .config import Config
 from .deteksi import DetektorWajah
 from .gps import PembacaGps, Posisi
 from .kamera import (buka_kamera, cari_perangkat, info_kamera, pastikan_kamera_ada,
-                     perangkat_merek, sambung_ulang)
+                     perangkat_merek, putar_frame, sambung_ulang,
+                     ukuran_setelah_putar)
 from .metrik import KANTUK, Kalibrator, PenilaiKantuk, Status
 from .notifikasi import Notifikasi
 from .senyap import redam_pustaka_c, redam_stderr, siapkan_font_qt
@@ -145,7 +146,10 @@ def _jalankan(arg: argparse.Namespace) -> int:
     sumber = str(cfg.kamera.sumber).strip().lower()
     dari_berkas = not (sumber == "auto" or sumber.lstrip("-").isdigit())
     if dari_berkas:
+        # Berkas video sudah punya orientasinya sendiri; putaran dan efek
+        # cermin hanya berlaku untuk kamera yang terpasang miring di motor.
         cfg.kamera.flip_horizontal = False
+        cfg.kamera.putar = 0
 
     print("=" * 62)
     print(" ASISTEN MONITORING RASA KANTUK - MediaPipe + EAR/PERCLOS/MAR")
@@ -295,7 +299,8 @@ def _loop(arg, cfg: Config, detektor: DetektorWajah, asisten: AsistenSuara,
                 else cari_perangkat(int(cfg.kamera.sumber)).label())
         nama_kamera = (str(cfg.kamera.sumber) if dari_berkas
                        else cari_perangkat(int(cfg.kamera.sumber)).nama)
-        print(f"\n[sistem] menyala -- {asal} -> {info_kamera(cap)}")
+        putaran = f" | diputar {cfg.kamera.putar} derajat" if cfg.kamera.putar % 360 else ""
+        print(f"\n[sistem] menyala -- {asal} -> {info_kamera(cap)}{putaran}")
         return True
 
     def matikan(alasan: str, sapa_lagi: bool = True) -> None:
@@ -334,7 +339,9 @@ def _loop(arg, cfg: Config, detektor: DetektorWajah, asisten: AsistenSuara,
                         sys.stdout.write("\r  SIAGA -- tahan tombol 3 detik untuk memulai"
                                          "        ")
                         sys.stdout.flush()
-                bingkai_siaga = layar_siaga(cfg.kamera.lebar, cfg.kamera.tinggi,
+                lebar_siaga, tinggi_siaga = ukuran_setelah_putar(
+                    cfg.kamera.lebar, cfg.kamera.tinggi, cfg.kamera.putar)
+                bingkai_siaga = layar_siaga(lebar_siaga, tinggi_siaga,
                                             "Tahan tombol 3 detik untuk memulai")
                 # Halaman web tetap menampilkan sesuatu saat sistem siaga,
                 # supaya jelas bedanya "belum dinyalakan" dengan "rusak".
@@ -388,6 +395,9 @@ def _loop(arg, cfg: Config, detektor: DetektorWajah, asisten: AsistenSuara,
                 continue
             gagal_baca = 0
 
+            # Urutannya penting: putar dulu, baru cermin. Deteksi, overlay,
+            # rekaman, dan video di web semuanya memakai frame yang sudah tegak.
+            frame = putar_frame(frame, cfg.kamera.putar)
             if cfg.kamera.flip_horizontal:
                 frame = cv2.flip(frame, 1)
 
@@ -407,7 +417,10 @@ def _loop(arg, cfg: Config, detektor: DetektorWajah, asisten: AsistenSuara,
                 fps = 0.9 * fps + 0.1 * (1.0 / dt) if fps else 1.0 / dt
 
             if perekam is None and arg.rekam:
-                perekam = _buat_perekam(arg.rekam, cap, fps_berkas)
+                # Ukuran diambil dari frame yang sudah diputar; properti kamera
+                # masih melaporkan ukuran sebelum putaran.
+                perekam = _buat_perekam(arg.rekam, frame.shape[1], frame.shape[0],
+                                        fps_berkas)
 
             # Tanpa internet, alarm tingkat 3 tidak akan sampai ke kerabat.
             # Pengendara harus tahu, jadi diingatkan berkala selama sistem
@@ -771,16 +784,14 @@ def _catat_episode(sesi: Sesi, st: Status, t: float,
                 sesi.episode[-1]["alasan"].append(a)
 
 
-def _buat_perekam(berkas: str, cap: cv2.VideoCapture, fps: float) -> cv2.VideoWriter:
+def _buat_perekam(berkas: str, lebar: int, tinggi: int, fps: float) -> cv2.VideoWriter:
     Path(berkas).parent.mkdir(parents=True, exist_ok=True)
     # Codec mengikuti ekstensi. .webm (VP8) bisa langsung diputar peramban
     # tanpa memasang codec apa pun; .mp4 di sini memakai MPEG-4 Part 2 karena
     # wheel OpenCV tidak membawa encoder H.264.
     kode = {"webm": "VP80", "avi": "XVID"}.get(
         Path(berkas).suffix.lstrip(".").lower(), "mp4v")
-    perekam = cv2.VideoWriter(
-        berkas, cv2.VideoWriter_fourcc(*kode), fps,
-        (int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)), int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))))
+    perekam = cv2.VideoWriter(berkas, cv2.VideoWriter_fourcc(*kode), fps, (lebar, tinggi))
     if not perekam.isOpened():
         raise RuntimeError(f"Tidak bisa membuat berkas rekaman '{berkas}' (codec {kode}).")
     print(f"Rekam    : {berkas} (codec {kode})")
