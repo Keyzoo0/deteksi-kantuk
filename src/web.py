@@ -58,6 +58,10 @@ class KeadaanBersama:
         self.sampel: deque[Cuplikan] = deque(maxlen=int(cfg.jendela_detik))
         self.riwayat: list[dict] = []
         self.status: dict = {"keadaan": "siaga"}
+        # Kondisi perangkat & layanan. Dipisah dari `status` karena tetap
+        # berlaku walau sistem belum memonitor -- halaman tidak boleh terlihat
+        # kosong hanya karena pengendara belum menahan tombol.
+        self.alat: dict = {}
 
     # --- dipanggil loop deteksi ---------------------------------------------
     def perbarui(self, frame, status: dict, cuplikan: Cuplikan | None,
@@ -76,6 +80,10 @@ class KeadaanBersama:
                 with self._kunci:
                     self._jpeg = buf.tobytes()
                     self._jpeg_saat = t
+
+    def set_alat(self, alat: dict) -> None:
+        with self._kunci:
+            self.alat = alat
 
     def catat_kejadian(self, kejadian: dict) -> None:
         with self._kunci:
@@ -103,6 +111,7 @@ class KeadaanBersama:
         with self._kunci:
             return {
                 "status": self.status,
+                "alat": self.alat,
                 "sampel": [[round(s.detik, 1), round(s.ear, 1),
                             round(s.perclos, 1), s.tingkat] for s in self.sampel],
                 "riwayat": self.riwayat[-50:],
@@ -147,6 +156,8 @@ input{background:#14161a;border:1px solid #333;border-radius:6px;color:#e8e8ea;
 <header><h1>Monitor Kantuk</h1><span id="pil" class="pil mati">memuat…</span>
 <span id="alasan" style="color:#9aa"></span></header>
 <main>
+<div class="kotak"><h2>Status alat</h2><div id="alat" class="metrik"></div>
+ <div id="pesan-keadaan" style="margin-top:8px;color:#ffc46b"></div></div>
 <div class="kotak"><h2>Kamera</h2><img src="/video" alt="video langsung"></div>
 <div class="kotak"><h2>Kondisi sekarang</h2><div class="metrik" id="metrik"></div></div>
 <div class="kotak"><h2>EAR &amp; PERCLOS — 2 jam terakhir</h2>
@@ -200,11 +211,18 @@ function gambar(sampel){
 }
 async function muat(){
   try{
-    const d = await (await fetch('/data')).json(), s = d.status;
+    const d = await (await fetch('/data')).json(), s = d.status, a = d.alat || {};
     const pil = $('#pil');
-    pil.textContent = s.level || s.keadaan || '—';
+    pil.textContent = s.level || ({siaga:'SIAGA', kalibrasi:'KALIBRASI'}[s.keadaan]) || '—';
     pil.className = 'pil ' + (s.level === 'KANTUK' ? 'kantuk' : s.level ? 'aman' : 'mati');
     $('#alasan').textContent = s.alasan || '';
+    // Panel ini sengaja selalu terisi, termasuk saat sistem belum dinyalakan.
+    $('#alat').innerHTML = [
+      ['Kamera', a.kamera], ['Suara', a.suara], ['GPS', a.gps],
+      ['Internet', a.internet], ['Kerabat', a.kerabat], ['Alarm', a.alarm],
+    ].filter(([,v]) => v).map(([k,v]) =>
+      `<div style="min-width:120px"><b style="font-size:13px">${v}</b><span>${k}</span></div>`).join('');
+    $('#pesan-keadaan').textContent = a.pesan || '';
     $('#metrik').innerHTML = [
       ['EAR', (s.ear ?? 0).toFixed(0) + '%'], ['PERCLOS', (s.perclos ?? 0).toFixed(0) + '%'],
       ['Kedip', s.kedip ?? 0], ['Menguap', s.menguap ?? 0],

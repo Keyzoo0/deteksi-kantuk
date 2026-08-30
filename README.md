@@ -206,9 +206,15 @@ jaringan. Namanya mengikuti nama host Pi; ganti dengan
 Port `:8080` tetap perlu ditulis. Melepasnya berarti mengikat port 80, dan itu
 menuntut pemberian izin `cap_net_bind_service` ke Python sistem — yang berlaku
 untuk semua skrip Python di Pi, bukan hanya program ini. Tidak sepadan untuk
-menghemat lima ketukan. Isinya: video langsung beranotasi,
-grafik EAR & PERCLOS 2 jam terakhir, riwayat kejadian beserta tautan peta,
-pemasangan speaker Bluetooth, penggantian WiFi, dan tombol reboot/matikan.
+menghemat lima ketukan. Isinya: **panel status alat**, video langsung beranotasi, grafik EAR & PERCLOS
+2 jam terakhir, riwayat kejadian beserta tautan peta, pemasangan speaker
+Bluetooth, penggantian WiFi, dan tombol reboot/matikan.
+
+Panel status selalu terisi di semua keadaan — siaga, kalibrasi, maupun
+monitoring — memuat kondisi kamera, suara, GPS, internet, kerabat terdaftar,
+dan tingkat alarm. Halaman yang kosong tidak bisa dibedakan dari alat yang
+rusak, padahal justru sebelum berangkat itulah pengendara perlu memastikan
+semuanya sudah siap.
 
 Servernya memakai `http.server` dari pustaka standar, tanpa dependensi
 tambahan, dan seluruh CSS/JS ada di dalam halaman — alat ini harus tetap bisa
