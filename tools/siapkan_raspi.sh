@@ -13,7 +13,8 @@ set -euo pipefail
 
 PENGGUNA="haris"
 SANDI="1"
-NAMA_HOST="raspberrypi"
+# Nama ini yang jadi alamat web UI: http://<nama-host>.local:8080
+NAMA_HOST="deteksikantuk"
 SSID=""
 PSK=""
 NEGARA=""
@@ -373,6 +374,7 @@ pesan "Langkah berikutnya:"
 pesan "  1. Lepas kartu SD dengan aman, pasang ke Raspberry Pi, nyalakan."
 pesan "  2. Tunggu ~1-2 menit (boot pertama memperluas partisi lalu reboot)."
 pesan "  3. Dari laptop ini:  ssh $PENGGUNA@$NAMA_HOST.local"
+pesan "     Web UI          :  http://$NAMA_HOST.local:8080"
 pesan "     Kalau .local gagal, cari IP-nya:"
 pesan "       ip neigh | grep -i 'b8:27:eb\\|dc:a6:32\\|e4:5f:01\\|d8:3a:dd'   # MAC Raspberry Pi"
 pesan "       nmap -sn \$(ip -4 route | awk '/default/{print \$3}')/24   # bila nmap ada"

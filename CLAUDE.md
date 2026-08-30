@@ -30,6 +30,8 @@ matikan Pi dengan menahan tombol 8 detik sebelum baterai kosong.
 
 ## Akses
 
+- Nama host Pi: **deteksikantuk** → web UI di `http://deteksikantuk.local:8080`
+  (mDNS/Avahi, tidak perlu server DNS). `raspberrypi.local` tidak berlaku lagi.
 - `ssh raspi` → `10.10.10.2` lewat kabel USB LAN (laptop `10.10.10.1`, profil NM
   `raspi-link` mode *shared*: memberi DHCP + internet ke Pi).
 - Jalur WiFi Pi (`192.168.100.x`) kadang hidup kadang tidak; kabel lebih andal.
