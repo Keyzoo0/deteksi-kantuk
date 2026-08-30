@@ -210,15 +210,33 @@ menghemat lima ketukan. Isinya: **panel status alat**, video langsung beranotasi
 2 jam terakhir, riwayat kejadian beserta tautan peta, pemasangan speaker
 Bluetooth, penggantian WiFi, dan tombol reboot/matikan.
 
-Panel status selalu terisi di semua keadaan — siaga, kalibrasi, maupun
+Tab **Info** memuat lembar sampul dokumen tugas akhir — judul, jenis dokumen,
+nomor revisi, nama berkas, unit penerbit, data mahasiswa, dan pembimbing.
+Semuanya **bisa diubah langsung dari halaman** lewat tombol Edit lalu Simpan,
+termasuk mengganti logo universitas. Isian disimpan ke `info.json`, logo
+unggahan ke `data/logo.png` (kalau tidak ada, dipakai `aset/logo-undip.png`).
+
+Tab **Dashboard** berisi pemantauan alat. Panel status selalu terisi di semua keadaan — siaga, kalibrasi, maupun
 monitoring — memuat kondisi kamera, suara, GPS, internet, kerabat terdaftar,
 dan tingkat alarm. Halaman yang kosong tidak bisa dibedakan dari alat yang
 rusak, padahal justru sebelum berangkat itulah pengendara perlu memastikan
 semuanya sudah siap.
 
-Servernya memakai `http.server` dari pustaka standar, tanpa dependensi
-tambahan, dan seluruh CSS/JS ada di dalam halaman — alat ini harus tetap bisa
-dipakai saat tidak ada internet sama sekali.
+Antarmukanya dibangun dengan **Vite + React + shadcn/ui** di folder `web/`.
+Yang berjalan di Raspberry Pi hanyalah hasil `npm run build` — Pi **tidak perlu
+Node sama sekali**, dan berkas hasil build ikut masuk repo. Fontnya pun
+dibundel, jadi halaman tetap tampil utuh tanpa CDN.
+
+```bash
+cd web
+npm install
+npm run dev     # kembangkan di laptop; API di-proxy ke deteksikantuk.local
+npm run build   # hasilnya ke web/dist, lalu salin ke Pi
+rsync -az --delete web/dist/ raspi:~/deteksi-kantuk/web/dist/
+```
+
+Sisi Python tetap tanpa dependensi: `http.server` hanya menyajikan berkas
+statis dan beberapa rute JSON (`/data`, `/info`, `/logo`, `/video`, `/aksi`).
 
 > Web UI tidak memakai kata sandi: siapa pun di jaringan yang sama bisa
 > membukanya. Pakai jaringan yang Anda percaya, bukan WiFi publik.
