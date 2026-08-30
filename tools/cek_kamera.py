@@ -13,12 +13,15 @@ Jalankan: .venv/bin/python tools/cek_kamera.py
 
 from __future__ import annotations
 
-import glob
 import sys
 import time
+from pathlib import Path
 
 import cv2
 import numpy as np
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from src.kamera import daftar_perangkat            # noqa: E402
 
 FORMAT = ("MJPG", "YUYV")
 RESOLUSI = ((640, 480), (320, 240))
@@ -59,12 +62,16 @@ def uji_format(idx: int, fourcc: str, lebar: int, tinggi: int,
 
 
 def main() -> int:
-    perangkat = sorted(glob.glob("/dev/video*"))
-    print("Perangkat video:", ", ".join(perangkat) or "(tidak ada)")
+    perangkat = daftar_perangkat()
+    print("Perangkat video:")
+    for p in perangkat:
+        print(f"  {p.label()}{'  <- logitech' if p.cocok('logitech') else ''}")
+    if not perangkat:
+        print("  (tidak ada)")
 
     terbaik: tuple[float, int, str, int, int] | None = None
-    for path in perangkat:
-        idx = int("".join(c for c in path if c.isdigit()))
+    for p in perangkat:
+        idx = p.index
         cap = cv2.VideoCapture(idx, cv2.CAP_V4L2)
         siap = cap.isOpened() and cap.read()[0]
         cap.release()
@@ -72,7 +79,7 @@ def main() -> int:
             print(f"\nindex {idx}: tidak mengirim gambar (lewati)")
             continue
 
-        print(f"\nindex {idx}:")
+        print(f"\nindex {idx} ({p.nama or p.produk or '-'}):")
         print(f"  {'format':<14} {'fps nyata':>10} {'frame robek':>13}")
         for lebar, tinggi in RESOLUSI:
             for fourcc in FORMAT:

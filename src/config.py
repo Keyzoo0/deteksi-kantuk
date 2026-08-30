@@ -10,6 +10,12 @@ from pathlib import Path
 @dataclass
 class KameraConfig:
     sumber: str = "0"            # index kamera ("0", "1") atau path file video
+    # Hanya kamera bermerek ini yang dipakai; kamera lain (mis. kamera bawaan
+    # laptop) diabaikan walau tersedia, dan program berhenti bila kamera yang
+    # dimaksud tidak tertancap. Boleh diisi nama merek ("logitech"), idVendor
+    # USB ("046d"), atau potongan nama perangkat ("c270"). Kosongkan untuk
+    # menerima kamera apa pun.
+    merek: str = "logitech"
     lebar: int = 640
     tinggi: int = 480
     fps: int = 30                # fps yang diminta ke driver kamera
