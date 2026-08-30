@@ -1,31 +1,37 @@
 import { useEffect, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Panel } from "@/komponen/bagian"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { aksi, ambil } from "@/lib/api"
 
 // Satu daftar bidang dipakai untuk mode baca maupun mode ubah, supaya
 // menambah isian baru cukup satu baris di sini.
-const BIDANG = [
-  ["judul", "Judul Dokumen", true],
-  ["jenis_dokumen", "Jenis Dokumen"],
-  ["nomor_dokumen", "Nomor Dokumen"],
-  ["nomor_revisi", "Nomor Revisi"],
-  ["nama_file", "Nama File"],
-  ["tanggal_terbit", "Tanggal Penerbitan"],
-  ["unit_penerbit", "Unit Penerbit"],
-  ["jumlah_halaman", "Jumlah Halaman"],
-  ["universitas", "Universitas / Fakultas", true],
+// Dipisah dua kelompok supaya kolom kiri (identitas lembaga, jarang berubah)
+// tidak berebut ruang dengan lembar sampul yang isinya lebih banyak.
+const IDENTITAS = [
+  ["universitas", "Universitas / Fakultas"],
   ["departemen", "Departemen"],
   ["jurusan", "Jurusan"],
-  ["alamat", "Alamat", true],
-  ["kontak", "Kontak", true],
+  ["alamat", "Alamat"],
+  ["kontak", "Kontak"],
 ]
+const DOKUMEN = [
+  ["judul", "Judul Dokumen", 4],
+  ["jenis_dokumen", "Jenis Dokumen"],
+  ["nomor_revisi", "Nomor Revisi"],
+  ["jumlah_halaman", "Jumlah Halaman"],
+  ["tanggal_terbit", "Tanggal Penerbitan"],
+  ["nomor_dokumen", "Nomor Dokumen", 2],
+  ["nama_file", "Nama File", 2],
+  ["unit_penerbit", "Unit Penerbit", 2],
+]
+
+const RENTANG = { 2: "sm:col-span-2", 3: "sm:col-span-3", 4: "sm:col-span-4" }
 
 function Bidang({ label, nilai, ubah, onChange, lebar }) {
   return (
-    <div className={lebar ? "sm:col-span-2" : undefined}>
+    <div className={RENTANG[lebar]}>
       <Label className="text-xs text-muted-foreground">{label}</Label>
       {ubah
         ? <Input className="mt-1" value={nilai || ""} onChange={e => onChange(e.target.value)} />
@@ -81,47 +87,54 @@ export default function Info({ info, setInfo, setVersiLogo }) {
   }
 
   return (
-    <div className="space-y-4">
-      <Card>
-        <CardHeader className="flex-row items-start justify-between gap-3 space-y-0">
-          <CardTitle className="text-sm">Lembar sampul dokumen</CardTitle>
-          <div className="flex shrink-0 gap-2">
-            {ubah ? <>
+    <div className="grid gap-4 xl:grid-cols-12">
+      <Panel judul="Identitas" kelas="xl:col-span-4">
+        <div className="mb-4 flex items-center gap-4">
+          <img src={`/logo?v=${versiLogo}`} alt="logo universitas"
+               className="size-20 shrink-0 rounded-md border bg-background object-contain p-1.5" />
+          <div>
+            <p className="text-sm font-medium">Logo universitas</p>
+            <p className="mb-2 text-xs text-muted-foreground">PNG/JPG, maksimal 2 MB.</p>
+            <input ref={berkas} type="file" accept="image/*" className="hidden" onChange={gantiLogo} />
+            {ubah
+              ? <Button size="sm" variant="secondary" onClick={() => berkas.current.click()}>
+                  Ganti logo</Button>
+              : <p className="text-xs text-muted-foreground">Tekan Edit untuk menggantinya.</p>}
+          </div>
+        </div>
+        <div className="grid gap-3">
+          {IDENTITAS.map(([kunci, label]) => (
+            <Bidang key={kunci} label={label} ubah={ubah}
+                    nilai={tampil[kunci]} onChange={v => set(kunci, v)} />
+          ))}
+        </div>
+      </Panel>
+
+      <Panel judul="Lembar sampul dokumen" kelas="xl:col-span-8"
+        aksi={ubah
+          ? <div className="flex gap-2">
               <Button size="sm" onClick={simpan}>Simpan</Button>
               <Button size="sm" variant="secondary"
                       onClick={() => { setDraf(structuredClone(info)); setUbah(false) }}>Batal</Button>
-            </> : <Button size="sm" variant="secondary" onClick={() => setUbah(true)}>Edit</Button>}
-          </div>
-        </CardHeader>
-        <CardContent>
-          <div className="mb-6 flex items-center gap-4">
-            <img src={`/logo?v=${versiLogo}`} alt="logo universitas"
-                 className="size-20 rounded-md border bg-white/5 object-contain p-1" />
-            <div>
-              <p className="text-sm font-medium">Logo universitas</p>
-              <p className="mb-2 text-xs text-muted-foreground">PNG/JPG, maksimal 2 MB.</p>
-              <input ref={berkas} type="file" accept="image/*" className="hidden" onChange={gantiLogo} />
-              {ubah && <Button size="sm" variant="secondary"
-                               onClick={() => berkas.current.click()}>Ganti logo</Button>}
             </div>
-          </div>
-          <div className="grid gap-4 sm:grid-cols-2">
-            {BIDANG.map(([kunci, label, lebar]) => (
-              <Bidang key={kunci} label={label} lebar={lebar} ubah={ubah}
-                      nilai={tampil[kunci]} onChange={v => set(kunci, v)} />
-            ))}
-          </div>
-        </CardContent>
-      </Card>
+          : <Button size="sm" variant="secondary" onClick={() => setUbah(true)}>Edit</Button>}>
+        <div className="grid gap-3 sm:grid-cols-4">
+          {DOKUMEN.map(([kunci, label, lebar]) => (
+            <Bidang key={kunci} label={label} lebar={lebar} ubah={ubah}
+                    nilai={tampil[kunci]} onChange={v => set(kunci, v)} />
+          ))}
+        </div>
+      </Panel>
 
-      <Card>
-        <CardHeader><CardTitle className="text-sm">Data pengusul</CardTitle></CardHeader>
-        <CardContent className="space-y-4">
+      <Panel judul="Data pengusul" kelas="xl:col-span-6"
+        aksi={ubah && <Button size="sm" variant="secondary"
+          onClick={() => tambah("mahasiswa", { nama: "", nim: "" })}>+ Tambah</Button>}>
+        <div className="grid gap-3 sm:grid-cols-2">
           {(tampil.mahasiswa || []).map((m, i) => (
-            <div key={i} className="grid gap-4 rounded-md border p-3 sm:grid-cols-2">
-              <div className="flex items-center justify-between sm:col-span-2">
+            <div key={i} className="grid gap-3 rounded-md border p-3">
+              <div className="flex items-center justify-between">
                 <p className="text-xs font-medium text-muted-foreground">Mahasiswa {i + 1}</p>
-                {ubah && <Button size="sm" variant="ghost"
+                {ubah && <Button size="sm" variant="ghost" className="h-6 px-2 text-xs"
                                  onClick={() => hapus("mahasiswa", i)}>Hapus</Button>}
               </div>
               <Bidang label="Nama" nilai={m.nama} ubah={ubah}
@@ -130,21 +143,21 @@ export default function Info({ info, setInfo, setVersiLogo }) {
                       onChange={v => setDalam("mahasiswa", i, "nim", v)} />
             </div>
           ))}
-          {ubah && <Button size="sm" variant="secondary"
-                           onClick={() => tambah("mahasiswa", { nama: "", nim: "" })}>
-            + Tambah mahasiswa</Button>}
-        </CardContent>
-      </Card>
+        </div>
+      </Panel>
 
-      <Card>
-        <CardHeader><CardTitle className="text-sm">Pembimbing</CardTitle></CardHeader>
-        <CardContent className="space-y-4">
+      <Panel judul="Pembimbing" kelas="xl:col-span-6"
+        aksi={ubah && <Button size="sm" variant="secondary"
+          onClick={() => tambah("pembimbing", { peran: "", nama: "", nip: "" })}>+ Tambah</Button>}>
+        <div className="grid gap-3 sm:grid-cols-2">
           {(tampil.pembimbing || []).map((p, i) => (
-            <div key={i} className="grid gap-4 rounded-md border p-3 sm:grid-cols-2">
-              <div className="flex items-center justify-between sm:col-span-2">
-                <Bidang label="Peran" nilai={p.peran} ubah={ubah}
-                        onChange={v => setDalam("pembimbing", i, "peran", v)} />
-                {ubah && <Button size="sm" variant="ghost"
+            <div key={i} className="grid gap-3 rounded-md border p-3">
+              <div className="flex items-center justify-between gap-2">
+                <div className="min-w-0 flex-1">
+                  <Bidang label="Peran" nilai={p.peran} ubah={ubah}
+                          onChange={v => setDalam("pembimbing", i, "peran", v)} />
+                </div>
+                {ubah && <Button size="sm" variant="ghost" className="mt-4 h-6 px-2 text-xs"
                                  onClick={() => hapus("pembimbing", i)}>Hapus</Button>}
               </div>
               <Bidang label="Nama" nilai={p.nama} ubah={ubah}
@@ -153,13 +166,10 @@ export default function Info({ info, setInfo, setVersiLogo }) {
                       onChange={v => setDalam("pembimbing", i, "nip", v)} />
             </div>
           ))}
-          {ubah && <Button size="sm" variant="secondary"
-                           onClick={() => tambah("pembimbing", { peran: "", nama: "", nip: "" })}>
-            + Tambah pembimbing</Button>}
-        </CardContent>
-      </Card>
+        </div>
+      </Panel>
 
-      {pesan && <p className="text-sm text-amber-500">{pesan}</p>}
+      {pesan && <p className="text-sm text-amber-500 xl:col-span-12">{pesan}</p>}
     </div>
   )
 }
