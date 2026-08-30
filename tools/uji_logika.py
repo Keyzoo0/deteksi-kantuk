@@ -18,7 +18,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.alarm import (AKUI, BUNYI_L1, BUNYI_L2, KIRIM_L3, MULAI_L2,   # noqa: E402
                        SELESAI, L1, L2, L3, TENANG, TanggaAlarm)
-from src.config import AlarmConfig, AmbangConfig, Config  # noqa: E402
+from src.config import (AlarmConfig, AmbangConfig, Config,   # noqa: E402
+                        GpsConfig)
+from src.gps import PantauBerhenti, PenguraiNmea, Posisi  # noqa: E402
 from src.tombol_gpio import (ISYARAT_TAHAN, KETUK, TAHAN,   # noqa: E402
                              TAHAN_LAMA, PenafsirTombol)
 from src.deteksi import HasilDeteksi                     # noqa: E402
@@ -271,6 +273,39 @@ def main() -> int:
                      tekan([(True, 0.0), (True, 3.1), (False, 4.0)]) == [ISYARAT_TAHAN, TAHAN]))
     hasil.append(uji("tahan 9 dtk tidak ikut memicu aksi tahan 3 dtk",
                      tekan([(True, 0.0), (True, 3.1), (True, 8.1), (False, 9.0)])[-1] == TAHAN_LAMA))
+
+    print("\n13. GPS: penguraian NMEA dan deteksi kendaraan berhenti")
+    u = PenguraiNmea()
+    for baris in ("$GPGGA,082754.00,0756.41922,S,11236.69266,E,1,05,1.83,525.2,M,14.6,M,,*43",
+                  "$GPRMC,082754.00,A,0756.41922,S,11236.69266,E,0.512,,300826,,,A*79"):
+        pos = u.telan(baris, saat=0.0)
+    hasil.append(uji("lintang selatan jadi negatif", abs(pos.lat - (-7.940320)) < 1e-5,
+                     f"{pos.lat:.6f}"))
+    hasil.append(uji("bujur timur tetap positif", abs(pos.lon - 112.611544) < 1e-5,
+                     f"{pos.lon:.6f}"))
+    hasil.append(uji("knot diubah ke km/jam", abs(pos.kecepatan_kmh - 0.948) < 0.01,
+                     f"{pos.kecepatan_kmh:.3f}"))
+    hasil.append(uji("satelit & HDOP terbaca", pos.satelit == 5 and abs(pos.hdop - 1.83) < 1e-6,
+                     f"{pos.satelit} sat, HDOP {pos.hdop}"))
+
+    u2 = PenguraiNmea()
+    kosong = u2.telan("$GPRMC,,V,,,,,,,,,,N*53", saat=0.0)
+    hasil.append(uji("kalimat tanpa fix tidak dianggap valid", not kosong.valid))
+    rusak = u2.telan("$GPGGA,rusak,,,x", saat=0.0)
+    hasil.append(uji("kalimat rusak tidak melempar galat", rusak is not None))
+
+    pb = PantauBerhenti(GpsConfig())
+    diam = Posisi(valid=True, kecepatan_kmh=0.4)
+    pb.perbarui(diam, 0.0)
+    hasil.append(uji("diam 29 detik belum dianggap berhenti", not pb.perbarui(diam, 29.0)))
+    hasil.append(uji("diam 31 detik dianggap berhenti", pb.perbarui(diam, 31.0)))
+    hasil.append(uji("melaju lagi membatalkan",
+                     not pb.perbarui(Posisi(valid=True, kecepatan_kmh=25.0), 32.0)))
+    pb2 = PantauBerhenti(GpsConfig())
+    pb2.perbarui(Posisi(valid=False), 0.0)
+    hasil.append(uji("tanpa fix TIDAK boleh dianggap berhenti",
+                     not pb2.perbarui(Posisi(valid=False), 120.0),
+                     "sinyal hilang justru saat tidak boleh dipercaya"))
 
     lulus = sum(hasil)
     print(f"\n{'=' * 46}\n{lulus}/{len(hasil)} pemeriksaan lulus")

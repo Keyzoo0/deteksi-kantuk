@@ -58,7 +58,25 @@ matikan Pi dengan menahan tombol 8 detik sebelum baterai kosong.
    Menyalakan sistem selalu diawali kalibrasi, jadi mati-nyalakan sekaligus
    berfungsi sebagai kalibrasi ulang -- tidak perlu tombol tersendiri.
 6. Alat harus jalan **tanpa over-engineering**: sesedikit mungkin lapisan,
-   dependensi, dan berkas.
+   dependensi, dan berkas. Sampai sekarang dependensi runtime hanya
+   mediapipe/opencv/numpy + gpiozero-lgpio bawaan Raspberry Pi OS. Web server
+   dan Telegram memakai pustaka standar.
+7. **Layanan systemd harus layanan PENGGUNA**, bukan sistem: PipeWire hidup di
+   sesi pengguna, dan layanan sistem tanpa XDG_RUNTIME_DIR membuat pw-play
+   gagal ("Host is down") sehingga alat bisu tanpa tanda apa pun.
+
+## Status pengerjaan
+
+| Fase | Isi | Status |
+|---|---|---|
+| 1 | Tombol GPIO + tangga alarm 3 tingkat + suara | selesai, teruji di perangkat |
+| 2 | GPS: posisi di riwayat + deteksi kendaraan berhenti | selesai; fix teruji di luar ruangan |
+| 3 | Telegram: antrean offline, foto di tingkat 3, daftar kerabat | selesai, teks & foto teruji sampai |
+| 4 | Web UI: video, grafik 2 jam, riwayat | selesai |
+| 5 | Panel Bluetooth/WiFi/daya + autostart systemd | selesai |
+
+Belum dikerjakan: pemakaian malam hari (butuh kamera NoIR + LED inframerah),
+kata sandi untuk web UI, dan kanal notifikasi selain Telegram (WhatsApp/SMS).
 
 ## Perintah yang sering dipakai
 
@@ -67,7 +85,13 @@ matikan Pi dengan menahan tombol 8 detik sebelum baterai kosong.
 .venv/bin/python tools/uji_logika.py     # uji logika tanpa kamera
 .venv/bin/python tools/cek_suara.py      # dengarkan semua pesan
 .venv/bin/python tools/cek_kamera.py     # ukur fps & frame robek
+.venv/bin/python tools/daftar_kerabat.py # daftarkan penerima Telegram
 sudo ./tools/siapkan_raspi.sh            # siapkan kartu SD Pi baru
+
+# di Raspberry Pi
+systemctl --user restart deteksi-kantuk
+journalctl --user-unit=deteksi-kantuk -f   # catatan: -u tidak jalan lewat SSH
+curl -s http://10.10.10.2:8080/data        # keadaan alat dalam JSON
 ```
 
 Bahasa kode, komentar, dan pesan: **Bahasa Indonesia**. Komentar menjelaskan

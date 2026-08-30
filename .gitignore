@@ -9,3 +9,7 @@ model/*.task
 *.avi
 *.webm
 .DS_Store
+
+# Token bot & daftar kerabat -- JANGAN pernah masuk repo
+rahasia.json
+antrean_notifikasi.jsonl

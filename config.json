@@ -29,7 +29,33 @@
     "menguap_detik": 2.0,
     "wajah_hilang_detik": 3.0,
     "jeda_ulang_detik": 5.0,
+    "jeda_tanpa_internet_detik": 10.0,
     "pemutar": ""
+  },
+  "web": {
+    "aktif": true,
+    "host": "0.0.0.0",
+    "port": 8080,
+    "fps_video": 5,
+    "mutu_jpeg": 60,
+    "jeda_sampel_detik": 1.0,
+    "jendela_detik": 7200.0
+  },
+  "notifikasi": {
+    "aktif": true,
+    "berkas_rahasia": "rahasia.json",
+    "berkas_antrean": "antrean_notifikasi.jsonl",
+    "kirim_foto": true,
+    "batas_detik": 15.0,
+    "jeda_coba_ulang_detik": 60.0,
+    "jeda_cek_daring_detik": 15.0
+  },
+  "gps": {
+    "aktif": true,
+    "port": "/dev/ttyAMA0",
+    "baud": 9600,
+    "ambang_berhenti_kmh": 3.0,
+    "berhenti_detik": 30.0
   },
   "alarm": {
     "l1_ulang_detik": 5.0,

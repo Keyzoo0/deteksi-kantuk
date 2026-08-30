@@ -1,0 +1,31 @@
+# Layanan systemd: alat menyala sendiri saat Raspberry Pi dihidupkan.
+#
+# Ini layanan PENGGUNA (systemd --user), bukan layanan sistem. Alasannya
+# menentukan: satu-satunya keluaran alat ini adalah suara, dan PipeWire hidup
+# di dalam sesi pengguna. Layanan sistem tidak punya XDG_RUNTIME_DIR sehingga
+# pw-play langsung gagal dengan "Host is down" -- alat akan bisu tanpa ada
+# tanda apa pun bahwa ada yang salah.
+#
+# Supaya sesi pengguna tetap hidup walau tidak ada yang login (alat dipakai
+# tanpa monitor), `loginctl enable-linger` dijalankan oleh setup_raspi.sh.
+#
+# Pasang:  systemctl --user enable --now deteksi-kantuk
+# Lihat :  journalctl --user -u deteksi-kantuk -f
+
+[Unit]
+Description=Asisten monitoring rasa kantuk
+After=pipewire.service bluetooth.target network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/deteksi-kantuk
+ExecStart=%h/deteksi-kantuk/.venv/bin/python -m src.main --tanpa-jendela
+Restart=always
+RestartSec=5
+# Kamera, GPIO, dan audio baru siap beberapa saat setelah boot; kegagalan di
+# detik-detik awal tidak boleh membuat layanan menyerah permanen.
+StartLimitBurst=0
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=default.target

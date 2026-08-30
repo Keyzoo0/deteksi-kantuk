@@ -75,7 +75,52 @@ class SuaraConfig:
     menguap_detik: float = 2.0           # menguap selama ini -> bersuara
     wajah_hilang_detik: float = 3.0      # wajah tak terlihat selama ini -> bersuara
     jeda_ulang_detik: float = 5.0        # pesan yang sama paling cepat diulang
+    jeda_tanpa_internet_detik: float = 10.0  # pengingat "tidak ada internet"
     pemutar: str = ""                    # kosong = deteksi otomatis
+
+
+@dataclass
+class WebConfig:
+    """Web server pemantauan lokal (lihat src/web.py)."""
+
+    aktif: bool = True
+    host: str = "0.0.0.0"                # semua antarmuka: WiFi maupun kabel
+    port: int = 8080
+    fps_video: int = 5                   # video langsung sengaja dibatasi
+    mutu_jpeg: int = 60
+    jeda_sampel_detik: float = 1.0       # satu titik grafik per detik
+    jendela_detik: float = 7200.0        # panjang grafik: 2 jam
+
+
+@dataclass
+class NotifikasiConfig:
+    """Notifikasi ke kerabat lewat Telegram (lihat src/notifikasi.py).
+
+    Token bot dan daftar chat sengaja TIDAK di sini: `config.json` ikut masuk
+    repo, sedangkan token bot adalah kunci penuh ke bot itu. Keduanya dibaca
+    dari `rahasia.json` yang diabaikan git.
+    """
+
+    aktif: bool = True
+    berkas_rahasia: str = "rahasia.json"
+    berkas_antrean: str = "antrean_notifikasi.jsonl"
+    kirim_foto: bool = True              # foto hanya disertakan pada alarm tingkat 3
+    batas_detik: float = 15.0            # batas tunggu tiap panggilan HTTP
+    jeda_coba_ulang_detik: float = 60.0  # jarak percobaan ulang pesan tertunda
+    jeda_cek_daring_detik: float = 15.0  # jarak pemeriksaan koneksi internet
+
+
+@dataclass
+class GpsConfig:
+    """Modul GPS NEO-6M lewat UART (lihat src/gps.py)."""
+
+    aktif: bool = True
+    # Di Raspberry Pi 5, /dev/serial0 menunjuk ke UART debug di header 3-pin,
+    # BUKAN ke pin 8/10. Jadi porta yang benar untuk modul GPS adalah ttyAMA0.
+    port: str = "/dev/ttyAMA0"
+    baud: int = 9600
+    ambang_berhenti_kmh: float = 3.0     # di bawah ini dianggap tidak melaju
+    berhenti_detik: float = 30.0         # selama ini -> kendaraan dianggap menepi
 
 
 @dataclass
@@ -121,6 +166,9 @@ class Config:
     suara: SuaraConfig = field(default_factory=SuaraConfig)
     tombol: TombolConfig = field(default_factory=TombolConfig)
     alarm: AlarmConfig = field(default_factory=AlarmConfig)
+    gps: GpsConfig = field(default_factory=GpsConfig)
+    notifikasi: NotifikasiConfig = field(default_factory=NotifikasiConfig)
+    web: WebConfig = field(default_factory=WebConfig)
     kalibrasi_detik: float = 4.0
     # Wajah hilang selama ini saat monitoring -> sistem dimatikan sendiri dan
     # kembali ke layar siaga (pengemudi turun, kamera bergeser, dsb.).
@@ -139,7 +187,8 @@ class Config:
                                               cfg.mati_tanpa_wajah_detik)
         for nama, obj in (("kamera", cfg.kamera), ("ambang", cfg.ambang),
                           ("suara", cfg.suara), ("tombol", cfg.tombol),
-                          ("alarm", cfg.alarm)):
+                          ("alarm", cfg.alarm), ("gps", cfg.gps),
+                          ("notifikasi", cfg.notifikasi), ("web", cfg.web)):
             for k, v in (data.get(nama) or {}).items():
                 if hasattr(obj, k):
                     setattr(obj, k, v)
