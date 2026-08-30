@@ -104,3 +104,24 @@ curl -s http://10.10.10.2:8080/data        # keadaan alat dalam JSON
 
 Bahasa kode, komentar, dan pesan: **Bahasa Indonesia**. Komentar menjelaskan
 *kenapa*, bukan *apa*.
+
+
+## Remote control dari Raspberry Pi
+
+Claude Code juga terpasang di Pi sendiri (`~/.local/bin/claude`) sebagai sesi
+kendali jarak jauh. Layanan pengguna `rc-claude` menjalankannya di dalam tmux
+saat boot; pemilik menyambung dengan `tmux attach -t rc`. Command `/rc` memuat
+konteks ini.
+
+Jaringan Pi (per Agustus 2026):
+- SSH lokal lewat kabel USB LAN: `ssh haris@10.10.10.2` (laptop di 10.10.10.1
+  berbagi internet; butuh `ip_forward=1` di laptop — tidak bertahan reboot laptop).
+- Internet utama saat dipakai: modem USB (Qualcomm) — jalur `usb0`, permanen,
+  otomatis jadi default saat modem ditancap. Modem seluler CGNAT: TIDAK
+  terjangkau dari internet tanpa Tailscale/VPN.
+- WiFi `deteksikantuk` / `harisdiaz` (modem) autoconnect dimatikan supaya tidak
+  berebut subnet dengan USB; nyalakan: `sudo nmcli con up preconfigured`.
+
+git push dari Pi: remote `origin` (GitHub Keyzoo0/deteksi-kantuk). Butuh kunci
+SSH Pi terdaftar di GitHub, atau token. Commit selalu di branch, bukan langsung
+ke main tanpa alasan.
