@@ -34,6 +34,11 @@ class Kalibrator:
         self._mar: list[float] = []
         self._mulai: float | None = None
 
+    @property
+    def dimulai(self) -> bool:
+        """True setelah wajah pertama kali terlihat (timer sudah berjalan)."""
+        return self._mulai is not None
+
     def sisa_detik(self, t: float) -> float:
         if self._mulai is None:
             return self.durasi
@@ -75,6 +80,7 @@ class Status:
     menguap_total: int = 0
     menguap_per_menit: int = 0
     sedang_menguap: bool = False
+    durasi_menguap: float = 0.0  # lama mulut menganga tanpa putus
 
 
 class PenilaiKantuk:
@@ -163,7 +169,8 @@ class PenilaiKantuk:
                 self._menguap_sejak = t
                 self._menguap_tercatat = False
             # Menganga sesaat (bicara) tidak dihitung; harus bertahan dulu.
-            st.sedang_menguap = (t - self._menguap_sejak) >= a.durasi_menguap_detik
+            st.durasi_menguap = t - self._menguap_sejak
+            st.sedang_menguap = st.durasi_menguap >= a.durasi_menguap_detik
             if st.sedang_menguap and not self._menguap_tercatat:
                 self.menguap_total += 1
                 self._menguap.append(t)

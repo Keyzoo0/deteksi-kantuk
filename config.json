@@ -21,6 +21,17 @@
     "kantuk_saat_menguap": true,
     "menguap_per_menit_kantuk": 0
   },
+  "suara": {
+    "aktif": true,
+    "voice": "gadis",
+    "folder": "suara",
+    "terpejam_detik": 3.0,
+    "menguap_detik": 2.0,
+    "wajah_hilang_detik": 3.0,
+    "jeda_ulang_detik": 5.0,
+    "pemutar": ""
+  },
   "kalibrasi_detik": 4.0,
+  "mati_tanpa_wajah_detik": 60.0,
   "tampilkan_jendela": true
 }

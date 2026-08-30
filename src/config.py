@@ -56,10 +56,33 @@ class AmbangConfig:
 
 
 @dataclass
+class SuaraConfig:
+    """Asisten suara: sapaan, panduan, dan peringatan lisan.
+
+    Ambang di sini sengaja terpisah dari `AmbangConfig`: tulisan KANTUK di
+    layar boleh muncul cepat (1,2 detik terpejam), sedangkan suara baru
+    berbunyi saat kondisinya benar-benar meyakinkan supaya tidak cerewet.
+    """
+
+    aktif: bool = True
+    voice: str = "gadis"                 # "gadis" (perempuan) | "ardi" (laki-laki)
+    folder: str = "suara"                # tempat berkas <pesan>-<voice>.wav
+    terpejam_detik: float = 3.0          # mata terpejam selama ini -> bersuara
+    menguap_detik: float = 2.0           # menguap selama ini -> bersuara
+    wajah_hilang_detik: float = 3.0      # wajah tak terlihat selama ini -> bersuara
+    jeda_ulang_detik: float = 5.0        # pesan yang sama paling cepat diulang
+    pemutar: str = ""                    # kosong = deteksi otomatis
+
+
+@dataclass
 class Config:
     kamera: KameraConfig = field(default_factory=KameraConfig)
     ambang: AmbangConfig = field(default_factory=AmbangConfig)
+    suara: SuaraConfig = field(default_factory=SuaraConfig)
     kalibrasi_detik: float = 4.0
+    # Wajah hilang selama ini saat monitoring -> sistem dimatikan sendiri dan
+    # kembali ke layar siaga (pengemudi turun, kamera bergeser, dsb.).
+    mati_tanpa_wajah_detik: float = 60.0
     tampilkan_jendela: bool = True
 
     @classmethod
@@ -70,7 +93,10 @@ class Config:
         data = json.loads(Path(path).read_text(encoding="utf-8"))
         cfg.kalibrasi_detik = data.get("kalibrasi_detik", cfg.kalibrasi_detik)
         cfg.tampilkan_jendela = data.get("tampilkan_jendela", cfg.tampilkan_jendela)
-        for nama, obj in (("kamera", cfg.kamera), ("ambang", cfg.ambang)):
+        cfg.mati_tanpa_wajah_detik = data.get("mati_tanpa_wajah_detik",
+                                              cfg.mati_tanpa_wajah_detik)
+        for nama, obj in (("kamera", cfg.kamera), ("ambang", cfg.ambang),
+                          ("suara", cfg.suara)):
             for k, v in (data.get(nama) or {}).items():
                 if hasattr(obj, k):
                     setattr(obj, k, v)
