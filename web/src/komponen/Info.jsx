@@ -35,11 +35,11 @@ function Bidang({ label, nilai, ubah, onChange, lebar }) {
   )
 }
 
-export default function Info({ info, setInfo }) {
+export default function Info({ info, setInfo, setVersiLogo }) {
   const [ubah, setUbah] = useState(false)
   const [draf, setDraf] = useState({})
   const [pesan, setPesan] = useState("")
-  const [versiLogo, setVersiLogo] = useState(0)
+  const [versiLogo, setVersiLokal] = useState(0)
   const berkas = useRef(null)
 
   useEffect(() => { setDraf(structuredClone(info || {})) }, [info])
@@ -71,7 +71,11 @@ export default function Info({ info, setInfo }) {
     pembaca.onload = async () => {
       const r = await aksi({ perintah: "simpan_logo", data: pembaca.result })
       setPesan(r.pesan || (r.ok ? "logo diganti" : "gagal mengganti logo"))
-      if (r.ok) setVersiLogo(Date.now())   // paksa peramban memuat ulang gambar
+      if (r.ok) {                          // paksa peramban memuat ulang gambar
+        const v = Date.now()
+        setVersiLokal(v)
+        setVersiLogo?.(v)                  // header ikut menyegarkan logonya
+      }
     }
     pembaca.readAsDataURL(f)
   }

@@ -8,6 +8,9 @@ import { ambil } from "@/lib/api"
 export default function App() {
   const [data, setData] = useState({ status: {}, alat: {}, sampel: [], riwayat: [] })
   const [info, setInfo] = useState(null)
+  // Berubah tiap halaman dimuat dan tiap logo diganti; tanpa ini peramban HP
+  // bisa terus menampilkan logo lama dari cache-nya sendiri.
+  const [versiLogo, setVersiLogo] = useState(() => Date.now())
 
   // Satu sumber data untuk seluruh halaman: dashboard menampilkannya, dan
   // header memakai judul dari tab Info.
@@ -27,7 +30,7 @@ export default function App() {
     <div className="min-h-svh bg-background text-foreground">
       <header className="sticky top-0 z-10 border-b bg-background/85 backdrop-blur">
         <div className="mx-auto flex max-w-4xl items-center gap-3 px-4 py-3">
-          <img src="/logo" alt="logo" className="size-9 shrink-0 object-contain" />
+          <img src={`/logo?v=${versiLogo}`} alt="logo" className="size-9 shrink-0 object-contain" />
           <div className="min-w-0 flex-1">
             <h1 className="truncate text-sm font-semibold leading-tight">
               {info?.judul || "Monitor Kantuk"}
@@ -46,7 +49,7 @@ export default function App() {
           <TabsTrigger value="info">Info</TabsTrigger>
         </TabsList>
         <TabsContent value="dasbor"><Dasbor data={data} /></TabsContent>
-        <TabsContent value="info"><Info info={info} setInfo={setInfo} /></TabsContent>
+        <TabsContent value="info"><Info info={info} setInfo={setInfo} setVersiLogo={setVersiLogo} /></TabsContent>
       </Tabs>
     </div>
   )

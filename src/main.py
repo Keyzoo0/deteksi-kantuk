@@ -13,7 +13,8 @@ Sistem berjalan sebagai tiga keadaan:
 Jalankan:  python -m src.main            (dari folder project)
 Tombol fisik : ketuk = matikan alarm | tahan 3 dtk = nyalakan/matikan sistem |
                tahan 8 dtk = matikan Raspberry Pi
-Papan ketik  : spasi = ketuk | c = tahan 3 dtk | q keluar | d landmark
+Papan ketik  : hanya untuk pengembangan di laptop --
+               spasi = ketuk | c = tahan 3 dtk | q keluar | d landmark
 
 Menyalakan sistem selalu diawali kalibrasi, jadi mematikan lalu menyalakan
 lagi sekaligus berfungsi sebagai kalibrasi ulang -- tidak perlu tombol sendiri.

@@ -49,8 +49,8 @@ def _bar(frame: np.ndarray, x: int, y: int, w: int, h: int, nilai: float,
     cv2.line(frame, (gx, y - 2), (gx, y + h + 2), KUNING, 1)
 
 
-def layar_siaga(lebar: int, tinggi: int, pesan: str = "Tekan SPASI untuk memulai sistem",
-                catatan: str = "q keluar") -> np.ndarray:
+def layar_siaga(lebar: int, tinggi: int, pesan: str = "Tahan tombol 3 detik untuk memulai",
+                catatan: str = "") -> np.ndarray:
     """Layar tunggu sebelum sistem dinyalakan (kamera sengaja belum dibuka)."""
     frame = np.full((tinggi, lebar, 3), 22, dtype=np.uint8)
     judul = "ASISTEN MONITORING KANTUK"
@@ -58,8 +58,9 @@ def layar_siaga(lebar: int, tinggi: int, pesan: str = "Tekan SPASI untuk memulai
     _teks(frame, judul, ((lebar - tw) // 2, tinggi // 2 - 40), 0.8, HIJAU, 2)
     (tw, _), _ = cv2.getTextSize(pesan, FONT, 0.6, 2)
     _teks(frame, pesan, ((lebar - tw) // 2, tinggi // 2 + 10), 0.6, PUTIH, 2)
-    (tw, _), _ = cv2.getTextSize(catatan, FONT, 0.45, 1)
-    _teks(frame, catatan, ((lebar - tw) // 2, tinggi // 2 + 45), 0.45, ABU)
+    if catatan:                      # hanya terpakai saat dijalankan berjendela
+        (tw, _), _ = cv2.getTextSize(catatan, FONT, 0.45, 1)
+        _teks(frame, catatan, ((lebar - tw) // 2, tinggi // 2 + 45), 0.45, ABU)
     cv2.rectangle(frame, (2, 2), (lebar - 3, tinggi - 3), (60, 60, 60), 2)
     return frame
 
@@ -107,7 +108,7 @@ def gambar_overlay(frame: np.ndarray, hasil: HasilDeteksi, st: Status,
             cv2.rectangle(frame, (x, y), (x + w, y + h), warna_status, 2)
 
     # --- panel metrik kiri atas ---
-    _panel(frame, 8, 8, 236, 156)
+    _panel(frame, 8, 8, 236, 140)
     baris = [
         (f"EAR   {st.ear_norm * 100:5.0f}% baseline",
          MERAH if st.mata_tertutup else PUTIH),
@@ -121,7 +122,6 @@ def gambar_overlay(frame: np.ndarray, hasil: HasilDeteksi, st: Status,
     for i, (t, warna) in enumerate(baris):
         _teks(frame, t, (18, 32 + i * 20), 0.46, warna)
     _bar(frame, 18, 122, 210, 8, st.ear_norm, 0.62, MERAH if st.mata_tertutup else HIJAU)
-    _teks(frame, "q keluar | c kalibrasi | d debug", (18, 150), 0.4, ABU)
 
     # --- banner status bawah ---
     _panel(frame, 0, tinggi - 74, lebar, 74, alpha=0.6)
