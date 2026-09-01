@@ -487,12 +487,14 @@ def _loop(arg, cfg: Config, detektor: DetektorWajah, asisten: AsistenSuara,
             elif peristiwa == KETUK:
                 # Selagi alarm berbunyi, ketukan berarti "saya sadar" dan itu
                 # satu-satunya cara mematikan alarm tingkat 2 ke atas.
-                if sesi.alarm.tingkat:
+                tingkat_sebelum = sesi.alarm.tingkat
+                if tingkat_sebelum:
                     print(f"\n[alarm] tombol ditekan pada tingkat "
-                          f"{sesi.alarm.tingkat} -- alarm dimatikan")
+                          f"{tingkat_sebelum} -- alarm dimatikan")
                 for e in sesi.alarm.ketuk(t):
                     _mainkan(asisten, e)
-                    _tutup_laporan(sesi, notif, gps, "pengendara menekan tombol")
+                    _tutup_laporan(sesi, notif, gps, "pengendara menekan tombol",
+                                   tingkat_sebelum)
                 sesi.alarm_bunyi = False
             elif peristiwa == ISYARAT_TAHAN:
                 tombol.pola_led(KEDIP_CEPAT)
@@ -682,13 +684,19 @@ def _pesan_darurat(sesi: Sesi, st: Status, gps: PembacaGps) -> str:
     return "\n".join(baris)
 
 
-def _tutup_laporan(sesi: Sesi, notif: Notifikasi, gps: PembacaGps, sebab: str) -> None:
+def _tutup_laporan(sesi: Sesi, notif: Notifikasi, gps: PembacaGps, sebab: str,
+                   tingkat_sebelum: int = TENANG) -> None:
     """Kabari kerabat bahwa keadaan sudah selesai.
 
     Tanpa pesan penutup, kerabat hanya menerima kabar buruk lalu senyap -- itu
     membuat panik dan tidak berguna. Pesan ini yang mengubahnya jadi informasi.
+
+    Dikirim kalau notifikasi darurat tingkat 3 sudah sempat terkirim, ATAU
+    alarm sempat sampai tingkat 2 (sirene menerus) -- kejadian itu sudah cukup
+    serius untuk kerabat tahu posisi terakhirnya, walau belum sempat eskalasi
+    ke tingkat 3.
     """
-    if not sesi.l3_terkirim:
+    if not sesi.l3_terkirim and tingkat_sebelum < L2:
         return
     sesi.l3_terkirim = False
     posisi = gps.posisi
@@ -707,11 +715,13 @@ def _bunyikan_alarm(cfg: Config, sesi: Sesi, asisten: AsistenSuara,
     # Dipanggil tiap frame supaya hitungan "sudah diam berapa lama" tetap
     # berjalan walau alarm belum berbunyi.
     if gps.berhenti(t) and sesi.alarm.tingkat:
+        tingkat_sebelum = sesi.alarm.tingkat
         print(f"\n[alarm] kendaraan berhenti -- alarm tingkat "
-              f"{sesi.alarm.tingkat} dimatikan")
+              f"{tingkat_sebelum} dimatikan")
         for e in sesi.alarm.kendaraan_berhenti(t):
             _mainkan(asisten, e)
-            _tutup_laporan(sesi, notif, gps, "kendaraan sudah berhenti")
+            _tutup_laporan(sesi, notif, gps, "kendaraan sudah berhenti",
+                           tingkat_sebelum)
     mengantuk = st.ada_wajah and (
         st.durasi_tertutup >= cfg.suara.terpejam_detik
         or st.durasi_menguap >= cfg.suara.menguap_detik)
