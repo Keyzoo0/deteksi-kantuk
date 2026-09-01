@@ -20,11 +20,11 @@ ambang, sehingga menahan lama tidak lebih dulu memicu aksi yang lebih pendek.
 | Tekanan | Arti | Isyarat |
 |---|---|---|
 | Ketuk (<1 detik) | Matikan alarm yang sedang berbunyi | — |
-| Tahan 3 detik | Nyalakan sistem / matikan sistem untuk istirahat | satu bip |
-| Tahan 8 detik | Matikan Raspberry Pi dengan aman | dua bip |
+| Tahan 3 detik+ | Nyalakan sistem / matikan sistem untuk istirahat | satu bip |
 
 Menyalakan sistem selalu diawali kalibrasi, jadi mematikan lalu menyalakan lagi
-sekaligus berfungsi sebagai kalibrasi ulang.
+sekaligus berfungsi sebagai kalibrasi ulang. Tombol ini sengaja tidak bisa
+mematikan Raspberry Pi itu sendiri — matikan lewat SSH (`sudo poweroff`).
 
 ## Tangga alarm
 
@@ -470,7 +470,7 @@ Semua ambang ada di `config.json` — bisa diubah tanpa menyentuh kode.
   },
   "tombol": {
     "aktif": true, "pin": 21, "pin_led": 27,
-    "ketuk_maks_detik": 1.0, "tahan_detik": 3.0, "tahan_lama_detik": 8.0,
+    "ketuk_maks_detik": 1.0, "tahan_detik": 3.0,
     "debounce_detik": 0.05
   },
   "gps": {

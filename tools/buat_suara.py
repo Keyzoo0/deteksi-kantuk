@@ -31,8 +31,7 @@ sys.path.insert(0, str(AKAR))
 
 # Kalimatnya tinggal di src/suara.py supaya TTS cadangan mengucapkan hal yang
 # persis sama dengan berkas WAV di sini. Nama berkas: "<kunci>-<suara>.wav".
-from src.suara import (BIP, BIP_GANDA, PESAN, SIRENE,    # noqa: E402
-                       TANPA_VOICE)
+from src.suara import BIP, PESAN, SIRENE, TANPA_VOICE    # noqa: E402
 
 SUARA = {"gadis": "id-ID-GadisNeural", "ardi": "id-ID-ArdiNeural"}
 LAJU = "-5%"          # sedikit lebih lambat -- lebih jelas di dalam mobil
@@ -127,9 +126,6 @@ async def semua(pesan: dict[str, str], suara: dict[str, str], rate: str) -> None
                 buat_sirene(KELUARAN / f"{kunci}.wav")
             elif kunci == BIP:
                 _simpan_nada(KELUARAN / f"{kunci}.wav", [(1200, 0.14)])
-            elif kunci == BIP_GANDA:
-                _simpan_nada(KELUARAN / f"{kunci}.wav",
-                             [(1200, 0.12), (0, 0.08), (1200, 0.12)])
             continue
         for nama, voice in suara.items():
             await buat(teks, voice, KELUARAN / f"{kunci}-{nama}.wav", rate)

@@ -25,8 +25,11 @@ Keputusan pemasangan di motor: audio ke **headset Bluetooth di dalam helm**
 (speaker di badan alat kalah oleh angin), tombol dipasang **di stang dekat
 jempol kiri** supaya bisa ditekan tanpa melepas genggaman, pemakaian **siang
 hari saja** untuk sekarang (kamera biasa buta dalam gelap), dan catu daya dari
-**baterai Li-ion + BMS**. Karena BMS memutus daya mendadak saat tegangan habis,
-matikan Pi dengan menahan tombol 8 detik sebelum baterai kosong.
+**baterai Li-ion + BMS**. BMS memutus daya mendadak saat tegangan habis, tapi
+tombol fisik **sengaja tidak bisa mematikan Raspberry Pi itu sendiri**
+(keputusan #5) — jadi belum ada cara mematikan Pi dengan aman di lapangan
+sebelum baterai kosong selain SSH. Ini kekurangan yang diketahui, belum
+diselesaikan (lihat bagian "Belum dikerjakan").
 
 ## Akses
 
@@ -45,20 +48,26 @@ matikan Pi dengan menahan tombol 8 detik sebelum baterai kosong.
 1. **Tangga alarm 3 tingkat.** L1: suara peringatan berkala. L2 (setelah L1
    bertahan ~10 dtk): alarm menerus, berhenti hanya bila tombol ditekan.
    L3 (10 dtk tanpa tombol): kirim notifikasi + foto ke kerabat, alarm jalan terus.
-2. **Setelah L3**: kirim pesan penutup ke kerabat, tangga **reset ke L1**,
-   jeda 60 detik. Tidak ada mode istirahat yang menjeda monitoring.
+2. **Setelah L3, atau setelah L2 direset** (kendaraan berhenti / tombol
+   ditekan sebelum sempat eskalasi ke L3): kirim pesan penutup + posisi ke
+   kerabat, tangga **reset ke L1**, jeda 60 detik. L1 sendirian tetap senyap
+   (dianggap belum cukup serius). Tidak ada mode istirahat yang menjeda
+   monitoring.
 3. **Speaker Bluetooth saja**, tanpa buzzer cadangan. Mitigasi: bila sink BT
    tidak tersambung saat alarm, langsung lompat ke L3 (percuma menunggu tombol
    kalau pengemudi tidak mendengar apa pun).
 4. **Notifikasi: Telegram dulu**; WhatsApp Cloud API butuh akun bisnis +
    template disetujui Meta, SMS menyusul setelah modem LTE ada.
 5. **Tombol** (aksi dijalankan saat **dilepas**; selagi ditahan hanya keluar
-   isyarat, supaya menahan 8 detik tidak lebih dulu memicu aksi 3 detik):
+   isyarat):
    - ketuk (<1 dtk) = matikan alarm yang sedang berbunyi
-   - tahan 3 dtk = nyalakan sistem / matikan sistem untuk istirahat
-   - tahan 8 dtk = matikan Raspberry Pi
+   - tahan 3 dtk ke atas = nyalakan sistem / matikan sistem untuk istirahat
    Menyalakan sistem selalu diawali kalibrasi, jadi mati-nyalakan sekaligus
    berfungsi sebagai kalibrasi ulang -- tidak perlu tombol tersendiri.
+   Tombol **sengaja tidak bisa mematikan Raspberry Pi itu sendiri** (dihapus
+   1 Sep 2026 atas permintaan pemilik) -- mematikan Pi cuma lewat SSH
+   (`sudo poweroff`). Tidak ada overlay `gpio-shutdown` di kernel, jadi tidak
+   ada jalan pintas lain di luar kode aplikasi.
 6. Alat harus jalan **tanpa over-engineering**: sesedikit mungkin lapisan,
    dependensi, dan berkas. Sampai sekarang dependensi runtime hanya
    mediapipe/opencv/numpy + gpiozero-lgpio bawaan Raspberry Pi OS. Web server
@@ -84,7 +93,10 @@ mengubah antarmuka: `cd web && npm run build`, lalu
 `rsync -az --delete web/dist/ raspi:~/deteksi-kantuk/web/dist/`.
 
 Belum dikerjakan: pemakaian malam hari (butuh kamera NoIR + LED inframerah),
-kata sandi untuk web UI, dan kanal notifikasi selain Telegram (WhatsApp/SMS).
+kata sandi untuk web UI, kanal notifikasi selain Telegram (WhatsApp/SMS), dan
+cara mematikan Pi dengan aman di lapangan sekarang bahwa tombol tidak lagi
+bisa (lihat keputusan #5) -- BMS masih bisa memutus daya mendadak sebelum
+baterai benar-benar kosong.
 
 ## Perintah yang sering dipakai
 

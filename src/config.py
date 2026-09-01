@@ -155,7 +155,7 @@ class AlarmConfig:
 class TombolConfig:
     """Tombol fisik + LED status di GPIO (lihat src/tombol_gpio.py).
 
-    Satu tombol memikul tiga peran, dibedakan dari lama tekanan, karena alat
+    Satu tombol memikul dua peran, dibedakan dari lama tekanan, karena alat
     ini dipakai tanpa monitor maupun keyboard.
     """
 
@@ -164,7 +164,6 @@ class TombolConfig:
     pin_led: int = 27                    # GPIO27 = pin fisik 13; 0 = tanpa LED
     ketuk_maks_detik: float = 1.0        # <= ini dianggap ketukan pendek
     tahan_detik: float = 3.0             # tahan sekian -> kalibrasi ulang
-    tahan_lama_detik: float = 8.0        # tahan sekian -> matikan Raspberry Pi
     debounce_detik: float = 0.05
 
 

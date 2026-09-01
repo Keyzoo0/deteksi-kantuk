@@ -21,8 +21,7 @@ from src.alarm import (AKUI, BUNYI_L1, BUNYI_L2, KIRIM_L3, MULAI_L2,   # noqa: E
 from src.config import (AlarmConfig, AmbangConfig, Config,   # noqa: E402
                         GpsConfig)
 from src.gps import PantauBerhenti, PenguraiNmea, Posisi  # noqa: E402
-from src.tombol_gpio import (ISYARAT_TAHAN, KETUK, TAHAN,   # noqa: E402
-                             TAHAN_LAMA, PenafsirTombol)
+from src.tombol_gpio import ISYARAT_TAHAN, KETUK, TAHAN, PenafsirTombol  # noqa: E402
 from src.deteksi import HasilDeteksi                     # noqa: E402
 from src.main import Sesi, _tahap_kalibrasi, _tahap_monitor   # noqa: E402
 from src.metrik import (AMAN, KANTUK, Baseline, Kalibrator,   # noqa: E402
@@ -271,8 +270,8 @@ def main() -> int:
                      tekan([(True, 0.0), (True, 2.0), (False, 2.1)]) == []))
     hasil.append(uji("tahan 4 dtk: isyarat lalu aksi saat dilepas",
                      tekan([(True, 0.0), (True, 3.1), (False, 4.0)]) == [ISYARAT_TAHAN, TAHAN]))
-    hasil.append(uji("tahan 9 dtk tidak ikut memicu aksi tahan 3 dtk",
-                     tekan([(True, 0.0), (True, 3.1), (True, 8.1), (False, 9.0)])[-1] == TAHAN_LAMA))
+    hasil.append(uji("tahan 9 dtk tetap TAHAN -- tombol tidak bisa mematikan Pi",
+                     tekan([(True, 0.0), (True, 3.1), (True, 8.1), (False, 9.0)]) == [ISYARAT_TAHAN, TAHAN]))
 
     print("\n13. GPS: penguraian NMEA dan deteksi kendaraan berhenti")
     u = PenguraiNmea()
