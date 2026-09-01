@@ -38,10 +38,9 @@ TANPA_INTERNET = "tanpa-internet" # notifikasi kerabat tidak akan sampai
 MATI = "mati"
 SIRENE = "sirene"                 # nada, bukan ucapan -- tanpa varian suara
 BIP = "bip"                       # isyarat: tahanan 3 detik tercapai
-BIP_GANDA = "bip-ganda"           # isyarat: tahanan 8 detik tercapai
 
 # Berkas yang sama untuk semua pilihan voice (nada, bukan ucapan).
-TANPA_VOICE = (SIRENE, BIP, BIP_GANDA)
+TANPA_VOICE = (SIRENE, BIP)
 
 # Kalimat setiap pesan. Dipakai dua tempat: `tools/buat_suara.py` merekamnya
 # jadi WAV, dan TTS cadangan mengucapkannya langsung bila WAV-nya hilang.
@@ -63,7 +62,6 @@ PESAN: dict[str, str] = {
     MATI: "Wajah tidak terdeteksi lebih dari satu menit. Sistem dimatikan.",
     SIRENE: "",                   # nada, dibuat tools/buat_suara.py
     BIP: "",
-    BIP_GANDA: "",
 }
 
 # Pemutar berkas WAV, diurutkan dari yang paling ringan. pw-play/paplay ada di

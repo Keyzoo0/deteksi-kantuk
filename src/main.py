@@ -11,8 +11,8 @@ Sistem berjalan sebagai tiga keadaan:
                   sendiri dan kembali ke SIAGA (ketuk tombol untuk mulai lagi).
 
 Jalankan:  python -m src.main            (dari folder project)
-Tombol fisik : ketuk = matikan alarm | tahan 3 dtk = nyalakan/matikan sistem |
-               tahan 8 dtk = matikan Raspberry Pi
+Tombol fisik : ketuk = matikan alarm | tahan 3 dtk = nyalakan/matikan sistem
+               (tombol ini tidak bisa mematikan Raspberry Pi -- pakai SSH)
 Papan ketik  : hanya untuk pengembangan di laptop --
                spasi = ketuk | c = tahan 3 dtk | q keluar | d landmark
 
@@ -41,14 +41,13 @@ from .notifikasi import Notifikasi
 from .senyap import redam_pustaka_c, redam_stderr, siapkan_font_qt
 from .alarm import (AKUI, BUNYI_L1, BUNYI_L2, KIRIM_L3, MENEPI, MULAI_L2, SELESAI,
                     L2, TENANG, TanggaAlarm)
-from .suara import (ARAHKAN, BERHENTI, BIP, BIP_GANDA, DIAKUI, ISTIRAHAT, MATI,
+from .suara import (ARAHKAN, BERHENTI, BIP, DIAKUI, ISTIRAHAT, MATI,
                     MENGANTUK, MULAI_KALIBRASI, SALAM, SIAP, SIRENE, TEKAN_TOMBOL,
                     TERKIRIM, AsistenSuara)
 from .tampilan import gambar_kalibrasi, gambar_overlay, layar_siaga
 from .web import Cuplikan, KeadaanBersama, mulai_server
-from .tombol_gpio import (ISYARAT_TAHAN, ISYARAT_TAHAN_LAMA, KEDIP_CEPAT,
-                          KEDIP_LAMBAT, KETUK, NYALA, PADAM, TAHAN, TAHAN_LAMA,
-                          TombolFisik)
+from .tombol_gpio import (ISYARAT_TAHAN, KEDIP_CEPAT, KEDIP_LAMBAT, KETUK,
+                          NYALA, PADAM, TAHAN, TombolFisik)
 
 AKAR = Path(__file__).resolve().parent.parent
 JUDUL = "Deteksi Rasa Kantuk"
@@ -188,7 +187,7 @@ def _jalankan(arg: argparse.Namespace) -> int:
     print(f"Mati auto: wajah hilang >{cfg.mati_tanpa_wajah_detik:.0f} detik saat monitoring")
     print(f"Mode     : {'jendela OpenCV' if tampilkan else 'headless (terminal)'}")
     print("Tombol   : ketuk = matikan alarm | tahan 3 dtk = nyalakan/matikan "
-          "sistem | tahan 8 dtk = matikan Pi\n")
+          "sistem\n")
 
     tombol = TombolFisik(cfg.tombol)
     print(f"Tombol   : {tombol.keterangan}")
@@ -354,14 +353,9 @@ def _loop(arg, cfg: Config, detektor: DetektorWajah, asisten: AsistenSuara,
                 peristiwa = baca_tombol(bingkai_siaga, time.monotonic())
                 if peristiwa == "keluar":
                     break
-                if peristiwa == TAHAN_LAMA:
-                    _matikan_pi(asisten)
-                    break
                 if peristiwa == ISYARAT_TAHAN:
                     tombol.pola_led(KEDIP_CEPAT)
                     isyarat(BIP)
-                if peristiwa == ISYARAT_TAHAN_LAMA:
-                    isyarat(BIP_GANDA)
                 if peristiwa == TAHAN:
                     asisten.diam()          # potong sapaan, langsung bekerja
                     if not nyalakan():
@@ -499,8 +493,6 @@ def _loop(arg, cfg: Config, detektor: DetektorWajah, asisten: AsistenSuara,
             elif peristiwa == ISYARAT_TAHAN:
                 tombol.pola_led(KEDIP_CEPAT)
                 isyarat(BIP)
-            elif peristiwa == ISYARAT_TAHAN_LAMA:
-                isyarat(BIP_GANDA)
             elif peristiwa == TAHAN:
                 # Pengendara ingin berhenti/istirahat. Kamera dilepas dan
                 # sistem kembali siaga; menyalakannya lagi otomatis mengulang
@@ -509,9 +501,6 @@ def _loop(arg, cfg: Config, detektor: DetektorWajah, asisten: AsistenSuara,
                 matikan("tombol ditahan -- sistem dimatikan untuk istirahat.",
                         sapa_lagi=False)
                 continue
-            elif peristiwa == TAHAN_LAMA:
-                _matikan_pi(asisten)
-                break
     except KeyboardInterrupt:
         print("\nDihentikan pengguna.")
     finally:
@@ -744,24 +733,6 @@ def _bunyikan_alarm(cfg: Config, sesi: Sesi, asisten: AsistenSuara,
     sesi.alarm_bunyi = sesi.alarm.tingkat >= L2
     tombol.pola_led(KEDIP_CEPAT if sesi.alarm.tingkat >= L2
                     else (NYALA if sesi.alarm.tingkat == TENANG else KEDIP_LAMBAT))
-
-
-def _matikan_pi(asisten: AsistenSuara) -> None:
-    """Matikan Raspberry Pi dengan aman (tombol ditahan 8 detik)."""
-    import subprocess
-    print("\n[sistem] tombol ditahan lama -- mematikan Raspberry Pi...")
-    asisten.ucap(MATI, antre=True, paksa=True)
-    for _ in range(60):                    # biarkan pesannya selesai berbunyi
-        if not asisten.sedang_bicara:
-            break
-        time.sleep(0.1)
-    for perintah in (["sudo", "-n", "poweroff"], ["systemctl", "poweroff"]):
-        try:
-            if subprocess.run(perintah, timeout=10).returncode == 0:
-                return
-        except (OSError, subprocess.SubprocessError):
-            continue
-    print("[sistem] gagal mematikan otomatis; matikan manual lewat SSH.")
 
 
 def _catat_episode(sesi: Sesi, st: Status, t: float,

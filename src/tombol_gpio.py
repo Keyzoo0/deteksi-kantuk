@@ -1,11 +1,13 @@
 """Tombol fisik dan LED status di GPIO Raspberry Pi.
 
-Alat ini dipakai tanpa monitor maupun keyboard, jadi satu tombol memikul tiga
+Alat ini dipakai tanpa monitor maupun keyboard, jadi satu tombol memikul dua
 peran yang dibedakan dari lama tekanan:
 
     ketuk (<1 detik)   -- matikan alarm yang sedang berbunyi (bukti masih sadar)
-    tahan 3 detik      -- nyalakan sistem, atau matikan sistem untuk istirahat
-    tahan 8 detik      -- matikan Raspberry Pi dengan aman
+    tahan 3 detik+     -- nyalakan sistem, atau matikan sistem untuk istirahat
+
+Tombol ini sengaja TIDAK bisa mematikan Raspberry Pi itu sendiri -- kalau
+perlu, matikan lewat SSH (`sudo poweroff`).
 
 Wiring (Raspberry Pi 5):
 
@@ -31,11 +33,9 @@ from .config import TombolConfig
 
 KETUK = "ketuk"
 TAHAN = "tahan"
-TAHAN_LAMA = "tahan-lama"
 # Isyarat dikeluarkan SELAGI tombol ditahan, hanya sebagai penanda bagi
-# pengguna (suara/LED) bahwa ambang berikutnya sudah tercapai.
+# pengguna (suara/LED) bahwa ambang tahan sudah tercapai.
 ISYARAT_TAHAN = "isyarat-tahan"
-ISYARAT_TAHAN_LAMA = "isyarat-tahan-lama"
 
 # Pola LED status.
 PADAM, NYALA, KEDIP_LAMBAT, KEDIP_CEPAT = "padam", "nyala", "kedip-lambat", "kedip-cepat"
@@ -53,7 +53,6 @@ class PenafsirTombol:
 
     ketuk_maks: float = 1.0
     tahan: float = 3.0
-    tahan_lama: float = 8.0
 
     _turun: float | None = None
     _sudah: str | None = None      # peristiwa tahan yang sudah dilaporkan
@@ -61,11 +60,9 @@ class PenafsirTombol:
     def perbarui(self, ditekan: bool, t: float) -> str | None:
         """Satu peristiwa per panggilan, atau None.
 
-        Aksi (KETUK/TAHAN/TAHAN_LAMA) baru dikeluarkan saat tombol DILEPAS,
-        sedangkan selagi ditahan hanya keluar isyarat. Kalau aksi dijalankan
-        selagi ditahan, menahan 8 detik untuk mematikan Pi akan lebih dulu
-        memicu kalibrasi ulang di detik ke-3 -- pengguna tidak punya
-        kesempatan membatalkan, padahal keduanya tindakan yang tidak ringan.
+        Aksi (KETUK/TAHAN) baru dikeluarkan saat tombol DILEPAS, sedangkan
+        selagi ditahan hanya keluar isyarat -- supaya pengguna masih bisa
+        membatalkan sebelum aksinya benar-benar terjadi.
         """
         if ditekan:
             if self._turun is None:
@@ -73,10 +70,7 @@ class PenafsirTombol:
                 self._sudah = None
                 return None
             lama = t - self._turun
-            if lama >= self.tahan_lama and self._sudah != ISYARAT_TAHAN_LAMA:
-                self._sudah = ISYARAT_TAHAN_LAMA
-                return ISYARAT_TAHAN_LAMA
-            if self.tahan <= lama < self.tahan_lama and self._sudah is None:
+            if lama >= self.tahan and self._sudah is None:
                 self._sudah = ISYARAT_TAHAN
                 return ISYARAT_TAHAN
             return None
@@ -86,8 +80,6 @@ class PenafsirTombol:
         lama = t - self._turun
         self._turun = None
         self._sudah = None
-        if lama >= self.tahan_lama:
-            return TAHAN_LAMA
         if lama >= self.tahan:
             return TAHAN
         if lama <= self.ketuk_maks:
@@ -100,8 +92,7 @@ class TombolFisik:
 
     def __init__(self, cfg: TombolConfig) -> None:
         self.cfg = cfg
-        self.penafsir = PenafsirTombol(cfg.ketuk_maks_detik, cfg.tahan_detik,
-                                       cfg.tahan_lama_detik)
+        self.penafsir = PenafsirTombol(cfg.ketuk_maks_detik, cfg.tahan_detik)
         self._btn = None
         self._led = None
         self._pola = None

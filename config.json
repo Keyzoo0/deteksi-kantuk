@@ -78,7 +78,6 @@
     "pin_led": 27,
     "ketuk_maks_detik": 1.0,
     "tahan_detik": 3.0,
-    "tahan_lama_detik": 8.0,
     "debounce_detik": 0.05
   },
   "kalibrasi_detik": 4.0,
