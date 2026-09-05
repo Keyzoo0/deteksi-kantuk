@@ -42,8 +42,9 @@ from .senyap import redam_pustaka_c, redam_stderr, siapkan_font_qt
 from .alarm import (AKUI, BUNYI_L1, BUNYI_L2, KIRIM_L3, MENEPI, MULAI_L2, SELESAI,
                     L2, TENANG, TanggaAlarm)
 from .suara import (ARAHKAN, BERHENTI, BIP, DIAKUI, ISTIRAHAT, MATI,
-                    MENGANTUK, MULAI_KALIBRASI, SALAM, SIAP, SIRENE, TEKAN_TOMBOL,
-                    TERKIRIM, AsistenSuara)
+                    MENGANTUK, MULAI_KALIBRASI, SALAM, SIAP, SIRENE,
+                    TANPA_INTERNET, TEKAN_TOMBOL, TERKIRIM, GPS_BELUM,
+                    GPS_SIAP, INTERNET_SIAP, AsistenSuara)
 from .tampilan import gambar_kalibrasi, gambar_overlay, layar_siaga
 from .web import Cuplikan, KeadaanBersama, mulai_server
 from .tombol_gpio import (ISYARAT_TAHAN, KEDIP_CEPAT, KEDIP_LAMBAT, KETUK,
@@ -239,6 +240,13 @@ def _loop(arg, cfg: Config, detektor: DetektorWajah, asisten: AsistenSuara,
     kode = 0
     salam_diucapkan = False
     alat_terakhir = 0.0
+    # Penanda status kesiapan. None = belum pernah dinilai; keluhan hanya
+    # dibunyikan setelah tenggang lewat, dan kabar baik hanya diumumkan bila
+    # sebelumnya memang sempat dikeluhkan -- supaya start yang mulus tetap
+    # senyap.
+    t_mulai_loop = time.monotonic()
+    net_sempat_putus = False
+    gps_sempat_hilang = False
     nama_kamera = ""
 
     def tampilkan_frame(frame) -> int:
@@ -416,13 +424,34 @@ def _loop(arg, cfg: Config, detektor: DetektorWajah, asisten: AsistenSuara,
                 perekam = _buat_perekam(arg.rekam, frame.shape[1], frame.shape[0],
                                         fps_berkas)
 
-            # Tanpa internet, alarm tingkat 3 tidak akan sampai ke kerabat.
-            # Pengendara harus tahu, jadi diingatkan berkala selama sistem
-            # menyala -- tetapi tidak sampai menimpa bunyi alarm yang sedang
-            # berlangsung (antre=False).
-            if notif.siap and not notif.daring:
-                asisten.ucap(TANPA_INTERNET,
-                             jeda=cfg.suara.jeda_tanpa_internet_detik)
+            # Kesiapan internet dan GPS diumumkan lisan karena alat dipakai
+            # tanpa layar. Modem butuh ~2 menit dan GPS cold start ~3 menit,
+            # jadi keluhan ditahan sampai tenggangnya lewat; kalau langsung
+            # mengomel sejak detik pertama, pengendara justru belajar
+            # mengabaikan suara sistem. Kabar baik ("sudah tersambung"/"sudah
+            # dapat sinyal") hanya diumumkan bila sebelumnya sempat
+            # dikeluhkan, supaya penyalaan yang mulus tetap senyap.
+            # Semua memakai antre=False agar tidak menimpa bunyi alarm.
+            sejak_mulai = time.monotonic() - t_mulai_loop
+            if notif.siap:
+                if notif.daring:
+                    if net_sempat_putus:
+                        net_sempat_putus = False
+                        asisten.ucap(INTERNET_SIAP, paksa=True)
+                elif sejak_mulai >= cfg.suara.tenggang_internet_detik:
+                    net_sempat_putus = True
+                    asisten.ucap(TANPA_INTERNET,
+                                 jeda=cfg.suara.jeda_tanpa_internet_detik)
+
+            if cfg.gps.aktif and not gps.keterangan.startswith("tidak tersedia"):
+                if gps.posisi.valid:
+                    if gps_sempat_hilang:
+                        gps_sempat_hilang = False
+                        asisten.ucap(GPS_SIAP, paksa=True)
+                elif sejak_mulai >= cfg.suara.tenggang_gps_detik:
+                    gps_sempat_hilang = True
+                    asisten.ucap(GPS_BELUM,
+                                 jeda=cfg.suara.jeda_gps_belum_detik)
 
             # Status perangkat cukup diperbarui tiap 2 detik: sebagian
             # pemeriksaannya memanggil proses luar (wpctl), terlalu mahal

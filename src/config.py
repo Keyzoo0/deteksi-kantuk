@@ -80,7 +80,13 @@ class SuaraConfig:
     menguap_detik: float = 2.0           # menguap selama ini -> bersuara
     wajah_hilang_detik: float = 3.0      # wajah tak terlihat selama ini -> bersuara
     jeda_ulang_detik: float = 5.0        # pesan yang sama paling cepat diulang
-    jeda_tanpa_internet_detik: float = 10.0  # pengingat "tidak ada internet"
+    # Modem butuh ~2 menit dan GPS cold start ~3 menit sebelum benar-benar
+    # siap. Mengeluh sejak detik pertama hanya melatih pengendara mengabaikan
+    # suara sistem, jadi keluhan ditahan sampai tenggang ini lewat.
+    tenggang_internet_detik: float = 120.0   # diam dulu selagi modem mencari sinyal
+    tenggang_gps_detik: float = 180.0        # diam dulu selagi GPS cold start
+    jeda_tanpa_internet_detik: float = 120.0 # pengingat "tidak ada internet"
+    jeda_gps_belum_detik: float = 180.0      # pengingat "GPS belum dapat sinyal"
     pemutar: str = ""                    # kosong = deteksi otomatis
 
 
