@@ -35,6 +35,9 @@ DIAKUI = "diakui"                 # tombol ditekan
 BERHENTI = "berhenti"             # kendaraan menepi (dideteksi GPS)
 ISTIRAHAT = "istirahat"           # sistem dimatikan pengguna lewat tombol
 TANPA_INTERNET = "tanpa-internet" # notifikasi kerabat tidak akan sampai
+INTERNET_SIAP = "internet-siap"   # koneksi kembali ada setelah sempat putus
+GPS_BELUM = "gps-belum"           # modul GPS belum mendapat fix
+GPS_SIAP = "gps-siap"             # fix didapat, lokasi siap dikirim
 MATI = "mati"
 SIRENE = "sirene"                 # nada, bukan ucapan -- tanpa varian suara
 BIP = "bip"                       # isyarat: tahanan 3 detik tercapai
@@ -59,6 +62,11 @@ PESAN: dict[str, str] = {
     ISTIRAHAT: "Sistem dimatikan. Silakan beristirahat.",
     TANPA_INTERNET: ("Tidak ada koneksi internet. Notifikasi ke kerabat "
                      "tidak dapat dikirim."),
+    INTERNET_SIAP: ("Koneksi internet tersambung. Notifikasi ke kerabat "
+                    "siap dikirim."),
+    GPS_BELUM: ("Sinyal GPS belum didapat. Lokasi belum bisa dikirim ke "
+                "kerabat."),
+    GPS_SIAP: "Sinyal GPS sudah didapat. Lokasi siap dikirim.",
     MATI: "Wajah tidak terdeteksi lebih dari satu menit. Sistem dimatikan.",
     SIRENE: "",                   # nada, dibuat tools/buat_suara.py
     BIP: "",

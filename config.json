@@ -30,7 +30,10 @@
     "menguap_detik": 2.0,
     "wajah_hilang_detik": 3.0,
     "jeda_ulang_detik": 5.0,
-    "jeda_tanpa_internet_detik": 10.0,
+    "tenggang_internet_detik": 120.0,
+    "tenggang_gps_detik": 180.0,
+    "jeda_tanpa_internet_detik": 120.0,
+    "jeda_gps_belum_detik": 180.0,
     "pemutar": ""
   },
   "web": {
