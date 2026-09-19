@@ -91,6 +91,17 @@ if [ -f deteksi-kantuk.service ]; then
   echo "   lihat keluarannya : journalctl --user -u deteksi-kantuk -f"
 fi
 
+# Failover internet: saat modem USB mati, radio WiFi (yang satunya) dipakai
+# untuk menyambung ke SSID cadangan alih-alih jadi AP. Layanan SISTEM karena
+# root dan harus jalan walau tidak ada yang login (lihat tools/jaga_internet.sh).
+if [ -f jaga-internet.service ]; then
+  echo ">> Memasang layanan failover internet..."
+  sudo cp jaga-internet.service /etc/systemd/system/
+  sudo systemctl daemon-reload
+  sudo systemctl enable jaga-internet >/dev/null
+  echo "   nyalakan sekarang : sudo systemctl start jaga-internet"
+fi
+
 echo ">> Kamera yang terdeteksi:"
 v4l2-ctl --list-devices 2>/dev/null || true
 echo ">> Keluaran audio yang terdeteksi:"
