@@ -306,6 +306,121 @@ def main() -> int:
                      not pb2.perbarui(Posisi(valid=False), 120.0),
                      "sinyal hilang justru saat tidak boleh dipercaya"))
 
+    # --- dashboard & CSV --------------------------------------------------
+    print("\n[dashboard, CSV & log kejadian]")
+    import csv as _csv
+    import io as _io
+    import types as _types
+    from src.main import _suapi_web
+    from src.metrik import KEDIP, MENGUAP, TANPA_WAJAH, TERPEJAM
+    from src.web import KeadaanBersama
+
+    # Jumlah sampel kalibrasi harus jumlah frame yang benar-benar terkumpul.
+    kal = Kalibrator(2.0)
+    t = 0.0
+    for i in range(37):                                  # 37 frame dalam 3,6 detik
+        kal.tambah(_frame(EAR_BUKA), t)
+        if i % 5 == 0:                                   # frame tanpa wajah tidak dihitung
+            kal.tambah(HasilDeteksi(ada_wajah=False), t)
+        t += 0.1
+    hasil.append(uji("sampel kalibrasi = frame aktual (37)",
+                     kal.selesai(t) and kal.hasil().sampel == 37,
+                     f"sampel={kal.hasil().sampel}"))
+
+    # Log kejadian.
+    p = PenilaiKantuk(AmbangConfig(), BASELINE)
+    t, _ = jalankan(p, 0.0, 2.0, EAR_BUKA)
+    t, _ = jalankan(p, t, 0.15, EAR_TUTUP)               # kedip
+    t, _ = jalankan(p, t, 1.0, EAR_BUKA)
+    t, _ = jalankan(p, t, 1.5, EAR_TUTUP)                # terpejam 1,5 dtk
+    t, _ = jalankan(p, t, 1.0, EAR_BUKA)
+    t, _ = jalankan(p, t, 0.4, EAR_BUKA, MAR_NGANGA)     # bicara: tidak dicatat
+    t, _ = jalankan(p, t, 0.5, EAR_BUKA)
+    t, _ = jalankan(p, t, 1.6, EAR_BUKA, MAR_NGANGA)     # menguap 1,6 dtk
+    t, _ = jalankan(p, t, 0.5, EAR_BUKA)
+    ev = p.ambil_peristiwa()
+    jenis = [e.jenis for e in ev]
+    hasil.append(uji("log: kedip, terpejam, menguap tercatat berurutan",
+                     jenis == [KEDIP, TERPEJAM, MENGUAP], str(jenis)))
+    if jenis == [KEDIP, TERPEJAM, MENGUAP]:
+        hasil.append(uji("log: durasi kedip ~0,15 dtk", 0.1 <= ev[0].durasi <= 0.2,
+                         f"{ev[0].durasi:.2f}"))
+        hasil.append(uji("log: durasi terpejam ~1,5 dtk", 1.4 <= ev[1].durasi <= 1.6,
+                         f"{ev[1].durasi:.2f}"))
+        hasil.append(uji("log: durasi menguap ~1,6 dtk", 1.5 <= ev[2].durasi <= 1.7,
+                         f"{ev[2].durasi:.2f}"))
+    hasil.append(uji("log: diambil sekali lalu kosong", p.ambil_peristiwa() == []))
+    t, _ = jalankan(p, t, 1.2, EAR_TUTUP)
+    p.perbarui(HasilDeteksi(ada_wajah=False), t)
+    ev = p.ambil_peristiwa()
+    hasil.append(uji("log: terpejam yang terputus wajah hilang tetap dicatat",
+                     len(ev) == 1 and ev[0].jenis == TERPEJAM and "terputus" in ev[0].catatan,
+                     str([(e.jenis, e.catatan) for e in ev])))
+
+    # Payload web + CSV lewat jalur yang sama dengan loop utama.
+    cfg_w = Config()
+    web = KeadaanBersama(cfg_w.web)
+    gps = _types.SimpleNamespace(posisi=Posisi())
+    sesi = Sesi(Kalibrator(2.0), penilai=PenilaiKantuk(AmbangConfig(), BASELINE),
+                alarm=TanggaAlarm(AlarmConfig()), mulai=100.0)
+    t = 100.0
+    for ear, mar, wajah in ([(EAR_BUKA, MAR_TUTUP, True)] * 20       # normal
+                            + [(EAR_TUTUP, MAR_TUTUP, True)] * 50    # terpejam 2,5 dtk
+                            + [(EAR_BUKA, MAR_TUTUP, True)] * 20
+                            + [(0, 0, False)] * 30):                 # wajah hilang
+        h = HasilDeteksi(ada_wajah=wajah, ear=ear, mar=mar)
+        st = sesi.penilai.perbarui(h, t)
+        web.cfg.jeda_sampel_detik = 0.0                              # simpan tiap frame
+        _suapi_web(web, None, sesi, st, 20.0, gps, t)
+        if st.durasi_tertutup >= 2.0 and "status_kantuk" not in locals():
+            status_kantuk = dict(web.status)
+        t += LANGKAH
+    s = web.status
+    hasil.append(uji("payload: MAR raw ikut terkirim", "mar_raw" in s))
+    hasil.append(uji("payload: wajah hilang -> status TANPA_WAJAH (bukan AMAN)",
+                     s["status_deteksi"] == TANPA_WAJAH and s["level"] == AMAN,
+                     s["status_deteksi"]))
+    hasil.append(uji("payload: EAR % kosong saat wajah hilang", s["ear"] is None))
+    sk = locals().get("status_kantuk", {})
+    hasil.append(uji("payload: terpejam lama -> status KANTUK, terpisah dari tingkat alarm",
+                     sk.get("status_deteksi") == KANTUK and "tingkat" in sk,
+                     f"{sk.get('status_deteksi')} / tingkat {sk.get('tingkat')}"))
+    hasil.append(uji("payload: sampel kalibrasi = baseline aktual",
+                     s["kalibrasi"]["sampel"] == BASELINE.sampel))
+    hasil.append(uji("grafik: titik tanpa wajah ber-EAR null",
+                     web.data()["sampel"][-1][1] is None))
+
+    baris = list(_csv.DictReader(_io.StringIO(web.ekspor_csv())))
+    wajib = {"timestamp", "session_id", "wajah_terdeteksi", "ear_baseline", "ear_threshold",
+             "mar_baseline", "mar_raw", "perclos_siap", "kedip_total", "menguap_total",
+             "status", "alasan", "fps", "sampel_kalibrasi", "tingkat_alarm"}
+    hasil.append(uji("CSV: semua kolom yang diminta ada",
+                     wajib <= set(baris[0]), str(sorted(wajib - set(baris[0])))))
+    hasil.append(uji("CSV: satu baris per titik", len(baris) == 120, str(len(baris))))
+    hasil.append(uji("CSV: session_id terisi", baris[0]["session_id"] == sesi.id))
+    hasil.append(uji("CSV: timestamp ISO berzona", "T" in baris[0]["timestamp"]
+                     and baris[0]["timestamp"][-6] in "+-", baris[0]["timestamp"]))
+    kantuk = [b for b in baris if b["status"] == KANTUK]
+    hasil.append(uji("CSV: baris KANTUK punya alasan", bool(kantuk) and
+                     all(b["alasan"] for b in kantuk)))
+    hilang = baris[-1]
+    hasil.append(uji("CSV: wajah hilang -> status TANPA_WAJAH, ukuran kosong",
+                     hilang["status"] == TANPA_WAJAH and hilang["wajah_terdeteksi"] == "0"
+                     and hilang["ear_raw"] == "" and hilang["mar_raw"] == ""
+                     and hilang["mata"] == "",
+                     str({k: hilang[k] for k in ("status", "ear_raw", "mata")})))
+    hasil.append(uji("CSV: baseline & sampel kalibrasi tetap terisi saat wajah hilang",
+                     float(hilang["ear_baseline"]) == EAR_BUKA
+                     and hilang["sampel_kalibrasi"] == str(BASELINE.sampel)))
+
+    ev = list(_csv.DictReader(_io.StringIO(web.ekspor_peristiwa_csv())))
+    hasil.append(uji("CSV kejadian: terpejam 2,5 dtk tercatat dengan durasi",
+                     any(e["jenis"] == TERPEJAM and 2.4 <= float(e["durasi_detik"]) <= 2.6
+                         for e in ev), str([(e["jenis"], e["durasi_detik"]) for e in ev])))
+    hasil.append(uji("CSV kejadian: selesai = mulai + durasi",
+                     all(e["timestamp_selesai"] >= e["timestamp_mulai"] for e in ev)
+                     and bool(ev)))
+
     lulus = sum(hasil)
     print(f"\n{'=' * 46}\n{lulus}/{len(hasil)} pemeriksaan lulus")
     return 0 if lulus == len(hasil) else 1

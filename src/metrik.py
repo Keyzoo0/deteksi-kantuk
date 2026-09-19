@@ -10,6 +10,27 @@ from .config import AmbangConfig
 from .deteksi import HasilDeteksi
 
 AMAN, KANTUK = "AMAN", "KANTUK"
+# Dipakai untuk kolom status di web/CSV saat wajah tidak terlihat. Penilai
+# sendiri tetap mengembalikan level AMAN di frame itu (tidak ada bukti kantuk),
+# tapi menulis "AMAN" padahal tidak ada yang diukur itu menyesatkan.
+TANPA_WAJAH = "TANPA_WAJAH"
+
+KEDIP, TERPEJAM, MENGUAP = "kedip", "mata_terpejam", "menguap"
+
+
+@dataclass
+class Peristiwa:
+    """Satu kejadian mata/mulut yang sudah selesai, untuk log kejadian.
+
+    Grafik dan CSV utama hanya menyimpan satu titik per detik, sedangkan
+    kedipan cuma bertahan 0,1-0,4 detik -- tanpa log terpisah kedipan itu
+    hilang di antara dua titik sampel.
+    """
+
+    jenis: str            # KEDIP / TERPEJAM / MENGUAP
+    mulai: float          # waktu penilai (monotonic atau timeline video)
+    durasi: float
+    catatan: str = ""     # mis. "terputus: wajah hilang"
 
 
 @dataclass
@@ -44,6 +65,11 @@ class Kalibrator:
             return self.durasi
         return max(0.0, self.durasi - (t - self._mulai))
 
+    @property
+    def sampel_sejauh(self) -> int:
+        """Jumlah frame yang sudah terkumpul selagi kalibrasi berlangsung."""
+        return len(self._ear)
+
     def tambah(self, hasil: HasilDeteksi, t: float) -> None:
         if not hasil.ada_wajah:
             return
@@ -70,6 +96,7 @@ class Status:
     ada_wajah: bool = True
     mata_tertutup: bool = False
     durasi_tertutup: float = 0.0
+    ear_raw: float = 0.0         # EAR mentah, belum dinormalkan ke baseline
     ear_norm: float = 1.0        # 1.0 = sama seperti saat kalibrasi
     mar: float = 0.0             # nilai MAR mentah
     ambang_mar: float = 0.0      # ambang menguap yang sedang dipakai
@@ -103,6 +130,13 @@ class PenilaiKantuk:
         self._hilang_sejak: float | None = None
         self.kedip_total = 0
         self.menguap_total = 0
+        # Kejadian yang sudah selesai tapi belum diambil pemanggil.
+        self._peristiwa: list[Peristiwa] = []
+
+    def ambil_peristiwa(self) -> list[Peristiwa]:
+        """Kembalikan lalu kosongkan kejadian yang selesai sejak panggilan lalu."""
+        baru, self._peristiwa = self._peristiwa, []
+        return baru
 
     def perbarui(self, hasil: HasilDeteksi, t: float) -> Status:
         a, b = self.a, self.b
@@ -111,8 +145,21 @@ class PenilaiKantuk:
         if not hasil.ada_wajah:
             # Wajah hilang: hentikan hitungan terpejam agar tidak salah alarm,
             # tapi jendela PERCLOS tetap dipangkas supaya angkanya tidak beku.
+            # Terpejam/menguap yang sudah cukup lama tetap dicatat (ditandai
+            # terputus) -- sering justru kepala yang tertunduk karena kantuk
+            # itulah yang membuat wajah hilang dari bingkai.
+            if self._tertutup_sejak is not None:
+                lama = t - self._tertutup_sejak
+                if lama > a.durasi_kedip_maks:
+                    self._peristiwa.append(Peristiwa(TERPEJAM, self._tertutup_sejak, lama,
+                                                     "terputus: wajah hilang"))
+            if self._menguap_sejak is not None and self._menguap_tercatat:
+                self._peristiwa.append(Peristiwa(MENGUAP, self._menguap_sejak,
+                                                 t - self._menguap_sejak,
+                                                 "terputus: wajah hilang"))
             self._tertutup_sejak = None
             self._menguap_sejak = None
+            self._menguap_tercatat = False
             if self._hilang_sejak is None:
                 self._hilang_sejak = t
             self._pangkas(self._jendela, t, a.perclos_window_detik)
@@ -124,6 +171,7 @@ class PenilaiKantuk:
             return st
         self._hilang_sejak = None
 
+        st.ear_raw = hasil.ear
         st.ear_norm = hasil.ear / b.ear if b.ear > 1e-6 else 1.0
         st.mar = hasil.mar
         st.ambang_mar = self.ambang_mar
@@ -157,6 +205,9 @@ class PenilaiKantuk:
             if 0.04 <= lama <= a.durasi_kedip_maks:   # durasi khas satu kedipan
                 self.kedip_total += 1
                 self._kedip.append(t)
+                self._peristiwa.append(Peristiwa(KEDIP, self._tertutup_sejak, lama))
+            elif lama > a.durasi_kedip_maks:
+                self._peristiwa.append(Peristiwa(TERPEJAM, self._tertutup_sejak, lama))
         self._tertutup_sejak = None
         self._pangkas(self._kedip, t, 60.0)
         st.kedip_per_menit = len(self._kedip)
@@ -176,6 +227,11 @@ class PenilaiKantuk:
                 self._menguap.append(t)
                 self._menguap_tercatat = True
         else:
+            # Menganga yang tidak sampai terhitung menguap (bicara, tertawa)
+            # tidak masuk log: ia juga tidak dihitung di menguap_total.
+            if self._menguap_sejak is not None and self._menguap_tercatat:
+                self._peristiwa.append(Peristiwa(MENGUAP, self._menguap_sejak,
+                                                 t - self._menguap_sejak))
             self._menguap_sejak = None
             self._menguap_tercatat = False
 

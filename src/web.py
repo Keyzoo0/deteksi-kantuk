@@ -27,11 +27,15 @@ from __future__ import annotations
 
 import base64
 import binascii
+import csv
+import io
 import json
+import math
 import threading
 import time
 from collections import deque
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -39,16 +43,47 @@ import cv2
 
 from . import sistem
 from .config import WebConfig
+from .gps import Posisi
 
 
 @dataclass
 class Cuplikan:
-    """Satu titik grafik (disimpan ±1 Hz, bukan tiap frame)."""
+    """Satu titik grafik (disimpan ±1 Hz, bukan tiap frame).
 
-    detik: float          # detik sejak sesi dimulai
-    ear: float            # persen terhadap baseline
-    perclos: float        # persen
-    tingkat: int          # tingkat alarm saat itu
+    Empat kolom pertama dikirim ke grafik lewat `/data` (ringkas, lihat
+    `KeadaanBersama.data`); kolom sisanya cuma dipakai ekspor CSV supaya
+    payload `/data` yang dipoll tiap beberapa detik tidak membengkak.
+    """
+
+    detik: float           # detik sejak sesi dimulai
+    ear: float | None      # persen terhadap baseline; None = wajah tidak terlihat
+    perclos: float         # persen
+    tingkat: int           # tingkat alarm saat itu
+    waktu: float = 0.0     # jam dinding (epoch) saat titik diambil
+    sesi_id: str = ""
+    wajah: bool = True
+    status: str = ""       # AMAN / KANTUK / TANPA_WAJAH
+    alasan: str = ""
+    ear_raw: float = 0.0
+    ear_baseline: float = 0.0
+    ear_threshold: float = 0.0
+    mata_tertutup: bool = False
+    durasi_tertutup: float = 0.0
+    mar: float = 0.0
+    mar_baseline: float = 0.0
+    ambang_mar: float = 0.0
+    sedang_menguap: bool = False
+    durasi_menguap: float = 0.0
+    perclos_siap: bool = False
+    kedip_total: int = 0
+    menguap_total: int = 0
+    fps: float = 0.0
+    sampel_kalibrasi: int = 0
+
+
+def _jam(waktu: float) -> str:
+    """Stempel waktu ISO 8601 zona lokal, mis. 2026-09-19T14:03:22.120+07:00."""
+    return datetime.fromtimestamp(waktu).astimezone().isoformat(timespec="milliseconds")
 
 
 class KeadaanBersama:
@@ -66,6 +101,14 @@ class KeadaanBersama:
         # 2 jam @1 Hz = 7200 titik; deque memangkas sendiri yang tertua.
         self.sampel: deque[Cuplikan] = deque(maxlen=int(cfg.jendela_detik))
         self.riwayat: list[dict] = []
+        # Log kejadian mata/mulut (kedip, terpejam, menguap) untuk CSV
+        # tersendiri. Kedipan ±15-20 per menit -> 2 jam kira-kira 2.400
+        # baris; batas ini hanya pengaman kalau alat jalan berhari-hari.
+        self.peristiwa: deque[dict] = deque(maxlen=20000)
+        # Jejak perjalanan untuk peta: (monotonic, lat, lon). Waktu monotonic,
+        # bukan jam dinding, karena jam Pi bisa melompat saat NTP tersinkron
+        # sesudah boot dan itu akan membuang atau menahan titik secara keliru.
+        self.jejak: deque[tuple[float, float, float]] = deque()
         self.status: dict = {"keadaan": "siaga"}
         # Kondisi perangkat & layanan. Dipisah dari `status` karena tetap
         # berlaku walau sistem belum memonitor -- halaman tidak boleh terlihat
@@ -139,6 +182,34 @@ class KeadaanBersama:
         with self._kunci:
             self.alat = alat
 
+    def catat_posisi(self, posisi: Posisi, ambang_kmh: float) -> None:
+        """Tambahkan titik ke jejak peta.
+
+        Hanya dicatat selagi kendaraan melaju dan sudah bergeser cukup jauh:
+        posisi GPS saat parkir tetap bergoyang belasan meter, dan mencatat
+        goyangan itu menggambar coretan kusut di sekitar tempat parkir
+        sekaligus membengkakkan muatan /data yang diambil tiap 2 detik.
+        """
+        if not posisi.valid or posisi.kecepatan_kmh < ambang_kmh:
+            return
+        t = time.monotonic()
+        with self._kunci:
+            if self.jejak:
+                _, lat, lon = self.jejak[-1]
+                if _jarak_meter(lat, lon, posisi.lat, posisi.lon) < self.cfg.jejak_min_meter:
+                    return
+            self.jejak.append((t, posisi.lat, posisi.lon))
+            self._pangkas_jejak(t)
+
+    def _pangkas_jejak(self, t: float) -> None:
+        while self.jejak and t - self.jejak[0][0] > self.cfg.jendela_detik:
+            self.jejak.popleft()
+
+    def catat_peristiwa(self, daftar: list[dict]) -> None:
+        if daftar:
+            with self._kunci:
+                self.peristiwa.extend(daftar)
+
     def catat_kejadian(self, kejadian: dict) -> None:
         with self._kunci:
             self.riwayat.append(kejadian)
@@ -163,13 +234,83 @@ class KeadaanBersama:
 
     def data(self) -> dict:
         with self._kunci:
+            # Dipangkas juga saat dibaca: kendaraan yang parkir lama tidak
+            # menambah titik, jadi pemangkasan saat mencatat saja tidak cukup
+            # untuk membuang jalur yang sudah lewat 2 jam.
+            self._pangkas_jejak(time.monotonic())
             return {
                 "status": self.status,
                 "alat": self.alat,
-                "sampel": [[round(s.detik, 1), round(s.ear, 1),
+                # EAR null saat wajah tidak terlihat: grafik memutus garisnya,
+                # bukan menggambar 100% palsu (nilai bawaan tanpa pengukuran).
+                "sampel": [[round(s.detik, 1),
+                            None if s.ear is None else round(s.ear, 1),
                             round(s.perclos, 1), s.tingkat] for s in self.sampel],
                 "riwayat": self.riwayat[-50:],
+                "jejak": [[round(lat, 6), round(lon, 6)] for _, lat, lon in self.jejak],
             }
+
+    KOLOM_CSV = ("timestamp", "session_id", "detik", "wajah_terdeteksi", "status",
+                 "alasan", "tingkat_alarm", "ear_raw", "ear_persen", "ear_baseline",
+                 "ear_threshold", "mata", "durasi_terpejam", "mar_raw", "mar_baseline",
+                 "ambang_mar", "mulut", "durasi_menguap", "perclos_persen",
+                 "perclos_siap", "kedip_total", "menguap_total", "fps",
+                 "sampel_kalibrasi")
+
+    def ekspor_csv(self) -> str:
+        """Riwayat grafik 2 jam terakhir sebagai teks CSV (semua kolom).
+
+        Saat wajah tidak terlihat, kolom ukuran mata/mulut dikosongkan:
+        angkanya hanya sisa nilai bawaan, bukan hasil pengukuran.
+        """
+        with self._kunci:
+            sampel = list(self.sampel)
+        keluaran = io.StringIO()
+        # Pemisah baris "\n": modul csv bawaannya "\r\n".
+        tulis = csv.writer(keluaran, lineterminator="\n")
+        tulis.writerow(self.KOLOM_CSV)
+        for s in sampel:
+            ukur = (lambda teks: teks) if s.wajah else (lambda _teks: "")
+            tulis.writerow((
+                _jam(s.waktu) if s.waktu else "", s.sesi_id, f"{s.detik:.1f}",
+                int(s.wajah), s.status, s.alasan, s.tingkat,
+                ukur(f"{s.ear_raw:.3f}"),
+                "" if s.ear is None else f"{s.ear:.1f}",
+                f"{s.ear_baseline:.3f}", f"{s.ear_threshold:.3f}",
+                ukur("tertutup" if s.mata_tertutup else "terbuka"),
+                ukur(f"{s.durasi_tertutup:.1f}"),
+                ukur(f"{s.mar:.3f}"),
+                f"{s.mar_baseline:.3f}", f"{s.ambang_mar:.3f}",
+                ukur("menguap" if s.sedang_menguap else "normal"),
+                ukur(f"{s.durasi_menguap:.1f}"),
+                f"{s.perclos:.1f}", int(s.perclos_siap),
+                s.kedip_total, s.menguap_total, f"{s.fps:.1f}", s.sampel_kalibrasi,
+            ))
+        return keluaran.getvalue()
+
+    KOLOM_PERISTIWA = ("timestamp_mulai", "timestamp_selesai", "session_id",
+                       "jenis", "detik_mulai", "durasi_detik", "catatan")
+
+    def ekspor_peristiwa_csv(self) -> str:
+        """Log kejadian kedip / mata terpejam / menguap, satu baris per kejadian."""
+        with self._kunci:
+            daftar = list(self.peristiwa)
+        keluaran = io.StringIO()
+        tulis = csv.writer(keluaran, lineterminator="\n")
+        tulis.writerow(self.KOLOM_PERISTIWA)
+        for p in daftar:
+            tulis.writerow((
+                _jam(p["waktu"]), _jam(p["waktu"] + p["durasi"]), p["sesi_id"],
+                p["jenis"], f"{p['detik']:.2f}", f"{p['durasi']:.3f}", p["catatan"],
+            ))
+        return keluaran.getvalue()
+
+def _jarak_meter(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    # Pendekatan equirectangular: untuk jarak belasan meter selisihnya dengan
+    # haversine jauh di bawah ketelitian GPS itu sendiri.
+    x = math.radians(lon2 - lon1) * math.cos(math.radians((lat1 + lat2) / 2))
+    y = math.radians(lat2 - lat1)
+    return math.hypot(x, y) * 6_371_000
 
 
 TIPE = {".html": "text/html; charset=utf-8", ".js": "text/javascript",
@@ -201,6 +342,17 @@ class _Penangan(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(isi)
 
+    def _kirim_csv(self, isi_csv: str, nama: str) -> None:
+        isi = isi_csv.encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "text/csv; charset=utf-8")
+        self.send_header("Content-Length", str(len(isi)))
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Content-Disposition",
+                         f'attachment; filename="{nama}"')
+        self.end_headers()
+        self.wfile.write(isi)
+
     def do_GET(self) -> None:                  # noqa: N802 (nama dari pustaka)
         jalur = self.path.split("?")[0]
         if jalur == "/data":
@@ -216,6 +368,11 @@ class _Penangan(BaseHTTPRequestHandler):
                             TIPE.get(berkas.suffix.lower(), "application/octet-stream"))
         elif jalur == "/video":
             self._aliran_video()
+        elif jalur == "/ekspor.csv":
+            self._kirim_csv(self.keadaan.ekspor_csv(), "deteksi-kantuk.csv")
+        elif jalur == "/ekspor-kejadian.csv":
+            self._kirim_csv(self.keadaan.ekspor_peristiwa_csv(),
+                            "deteksi-kantuk-kejadian.csv")
         else:
             self._kirim_statis(jalur)
 

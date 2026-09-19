@@ -36,7 +36,7 @@ from .gps import PembacaGps, Posisi
 from .kamera import (buka_kamera, cari_perangkat, info_kamera, pastikan_kamera_ada,
                      perangkat_merek, putar_frame, sambung_ulang,
                      ukuran_setelah_putar)
-from .metrik import KANTUK, Kalibrator, PenilaiKantuk, Status
+from .metrik import KANTUK, TANPA_WAJAH, Kalibrator, PenilaiKantuk, Status
 from .notifikasi import Notifikasi
 from .senyap import redam_pustaka_c, redam_stderr, siapkan_font_qt
 from .alarm import (AKUI, BUNYI_L1, BUNYI_L2, KIRIM_L3, MENEPI, MULAI_L2, SELESAI,
@@ -97,6 +97,9 @@ class Sesi:
     alarm: TanggaAlarm | None = None     # tangga alarm 3 tingkat
     alarm_bunyi: bool = False            # sirene tingkat 2 sedang berbunyi
     l3_terkirim: bool = False            # notifikasi darurat sudah dikirim
+    # Penanda sesi di CSV: data grafik tidak dikosongkan saat sistem
+    # dimatikan-dinyalakan, dan kolom "detik" mulai dari nol lagi tiap sesi.
+    id: str = field(default_factory=lambda: time.strftime("%Y%m%d-%H%M%S"))
 
 
 def cetak_status(st: Status, fps: float, catatan: str = "",
@@ -358,6 +361,7 @@ def _loop(arg, cfg: Config, detektor: DetektorWajah, asisten: AsistenSuara,
                     alat_terakhir = sekarang
                     web.set_alat(_status_alat(cfg, asisten, gps, notif, SIAGA,
                                               None, sekarang, ""))
+                    web.catat_posisi(gps.posisi, cfg.gps.ambang_berhenti_kmh)
                 peristiwa = baca_tombol(bingkai_siaga, time.monotonic())
                 if peristiwa == "keluar":
                     break
@@ -461,12 +465,15 @@ def _loop(arg, cfg: Config, detektor: DetektorWajah, asisten: AsistenSuara,
                 alat_terakhir = sekarang
                 web.set_alat(_status_alat(cfg, asisten, gps, notif, keadaan,
                                           sesi, t, nama_kamera))
+                web.catat_posisi(gps.posisi, cfg.gps.ambang_berhenti_kmh)
 
             catatan = ""
             # --- KALIBRASI -----------------------------------------------
             if keadaan == KALIBRASI:
                 web.perbarui(frame, {"keadaan": "kalibrasi",
-                                     "sisa": round(sesi.kalibrator.sisa_detik(t), 1)},
+                                     "mulai": sesi.kalibrator.dimulai,
+                                     "sisa": round(sesi.kalibrator.sisa_detik(t), 1),
+                                     "sampel": sesi.kalibrator.sampel_sejauh},
                              None, t)
                 catatan = _tahap_kalibrasi(cfg, sesi, asisten, hasil, t)
                 if sesi.penilai is not None:
@@ -656,6 +663,12 @@ def _status_alat(cfg: Config, asisten: AsistenSuara, gps: PembacaGps,
         "suara": ("dimatikan" if not asisten.aktif
                   else "siap" if asisten.perangkat_hidup() else "TIDAK ADA"),
         "gps": kabar_gps,
+        # Koordinat dikirim terpisah dari teks supaya dasbor bisa memasang peta;
+        # 0.0 dipakai sebagai "belum ada" karena titik nol ada di tengah laut,
+        # jadi tidak mungkin tertukar dengan posisi motor yang sebenarnya.
+        "lat": posisi.lat if posisi.valid else 0.0,
+        "lon": posisi.lon if posisi.valid else 0.0,
+        "tautan": posisi.tautan if posisi.valid else "",
         "internet": "tersambung" if notif.daring else "putus",
         "kerabat": (f"{notif.jumlah_kerabat} terdaftar" if notif.siap
                     else "belum ada"),
@@ -668,11 +681,22 @@ def _suapi_web(web: KeadaanBersama, frame, sesi: Sesi, st: Status, fps: float,
     """Titipkan frame + metrik terbaru ke web server (tanpa memblokir)."""
     posisi = gps.posisi
     tingkat = sesi.alarm.tingkat if sesi.alarm else 0
+    penilai = sesi.penilai
+    assert penilai is not None
+    # Status deteksi (penilaian frame ini) sengaja dipisah dari tingkat alarm
+    # (tangga eskalasi): alarm bisa masih tingkat 2 walau frame ini AMAN,
+    # karena alarm baru padam setelah tombol ditekan.
+    status = st.level if st.ada_wajah else TANPA_WAJAH
+    ear_threshold = penilai.b.ear * penilai.a.rasio_mata_tertutup
+    alasan = ", ".join(st.alasan)
+    jam = time.time()
     web.perbarui(frame, {
         "keadaan": "monitor",
+        "sesi_id": sesi.id,
         "level": st.level,
-        "alasan": ", ".join(st.alasan),
-        "ear": st.ear_norm * 100,
+        "status_deteksi": status,
+        "alasan": alasan,
+        "ear": st.ear_norm * 100 if st.ada_wajah else None,
         "perclos": st.perclos * 100,
         "kedip": st.kedip_total,
         "menguap": st.menguap_total,
@@ -680,8 +704,44 @@ def _suapi_web(web: KeadaanBersama, frame, sesi: Sesi, st: Status, fps: float,
         "fps": fps,
         "gps": (f"{posisi.kecepatan_kmh:.0f} km/jam" if posisi.valid
                 else f"{posisi.satelit} sat"),
-    }, Cuplikan(t - sesi.mulai, st.ear_norm * 100, st.perclos * 100, tingkat), t)
-
+        # Detail per-frame untuk panel "Detail Deteksi" di web.
+        "wajah": st.ada_wajah,
+        "ear_raw": st.ear_raw,
+        "mar_raw": st.mar,
+        "ambang_mar": st.ambang_mar,
+        "mata_tertutup": st.mata_tertutup,
+        "durasi_tertutup": st.durasi_tertutup,
+        "sedang_menguap": st.sedang_menguap,
+        "durasi_menguap": st.durasi_menguap,
+        "perclos_matang": st.perclos_matang,
+        # Hasil kalibrasi sesi ini -- dikirim terus selama monitor supaya
+        # panel "Kalibrasi" di web tetap menampilkan baseline/threshold-nya,
+        # bukan cuma sesaat waktu kalibrasi baru selesai.
+        "kalibrasi": {
+            "ear_baseline": penilai.b.ear,
+            "ear_threshold": ear_threshold,
+            "ear_threshold_persen": penilai.a.rasio_mata_tertutup * 100,
+            "mar_baseline": penilai.b.mar,
+            "mar_threshold": penilai.ambang_mar,
+            "sampel": penilai.b.sampel,
+        },
+    }, Cuplikan(
+        t - sesi.mulai, st.ear_norm * 100 if st.ada_wajah else None,
+        st.perclos * 100, tingkat,
+        waktu=jam, sesi_id=sesi.id, wajah=st.ada_wajah, status=status, alasan=alasan,
+        ear_raw=st.ear_raw, ear_baseline=penilai.b.ear, ear_threshold=ear_threshold,
+        mata_tertutup=st.mata_tertutup, durasi_tertutup=st.durasi_tertutup,
+        mar=st.mar, mar_baseline=penilai.b.mar, ambang_mar=penilai.ambang_mar,
+        sedang_menguap=st.sedang_menguap, durasi_menguap=st.durasi_menguap,
+        perclos_siap=st.perclos_matang, kedip_total=st.kedip_total,
+        menguap_total=st.menguap_total, fps=fps, sampel_kalibrasi=penilai.b.sampel,
+    ), t)
+    # Waktu kejadian dicatat dalam jam penilai (monotonic / timeline video);
+    # diterjemahkan ke jam dinding relatif terhadap "sekarang".
+    web.catat_peristiwa([{
+        "waktu": jam - (t - p.mulai), "sesi_id": sesi.id, "jenis": p.jenis,
+        "detik": p.mulai - sesi.mulai, "durasi": p.durasi, "catatan": p.catatan,
+    } for p in penilai.ambil_peristiwa()])
 
 def _pesan_darurat(sesi: Sesi, st: Status, gps: PembacaGps) -> str:
     posisi = gps.posisi
@@ -703,7 +763,7 @@ def _pesan_darurat(sesi: Sesi, st: Status, gps: PembacaGps) -> str:
 
 
 def _tutup_laporan(sesi: Sesi, notif: Notifikasi, gps: PembacaGps, sebab: str,
-                   tingkat_sebelum: int = TENANG) -> None:
+                   tingkat_sebelum: int = TENANG, selalu_kirim: bool = False) -> None:
     """Kabari kerabat bahwa keadaan sudah selesai.
 
     Tanpa pesan penutup, kerabat hanya menerima kabar buruk lalu senyap -- itu
@@ -712,9 +772,11 @@ def _tutup_laporan(sesi: Sesi, notif: Notifikasi, gps: PembacaGps, sebab: str,
     Dikirim kalau notifikasi darurat tingkat 3 sudah sempat terkirim, ATAU
     alarm sempat sampai tingkat 2 (sirene menerus) -- kejadian itu sudah cukup
     serius untuk kerabat tahu posisi terakhirnya, walau belum sempat eskalasi
-    ke tingkat 3.
+    ke tingkat 3. `selalu_kirim` melewati syarat tingkat: dipakai saat
+    kendaraan berhenti, karena berhenti sendiri yang membuat tangga tidak
+    sempat naik ke tingkat 2/3 -- bukan alasan untuk kerabat tidak tahu.
     """
-    if not sesi.l3_terkirim and tingkat_sebelum < L2:
+    if not selalu_kirim and not sesi.l3_terkirim and tingkat_sebelum < L2:
         return
     sesi.l3_terkirim = False
     posisi = gps.posisi
@@ -739,7 +801,7 @@ def _bunyikan_alarm(cfg: Config, sesi: Sesi, asisten: AsistenSuara,
         for e in sesi.alarm.kendaraan_berhenti(t):
             _mainkan(asisten, e)
             _tutup_laporan(sesi, notif, gps, "kendaraan sudah berhenti",
-                           tingkat_sebelum)
+                           tingkat_sebelum, selalu_kirim=True)
     mengantuk = st.ada_wajah and (
         st.durasi_tertutup >= cfg.suara.terpejam_detik
         or st.durasi_menguap >= cfg.suara.menguap_detik)
@@ -764,6 +826,25 @@ def _bunyikan_alarm(cfg: Config, sesi: Sesi, asisten: AsistenSuara,
                     else (NYALA if sesi.alarm.tingkat == TENANG else KEDIP_LAMBAT))
 
 
+def _teks_kondisi(alasan: list[str], durasi: float, menguap_kali: int) -> str:
+    """Render daftar alasan jadi teks kondisi untuk satu baris riwayat.
+
+    Angka durasi pada alasan "mata terpejam" sengaja disamakan dengan kolom
+    durasi (lama kejadian berlangsung), bukan durasi_tertutup mentah dari
+    metrik -- keduanya menunjuk rentang waktu yang sama di mata pengguna,
+    jadi tidak boleh menampilkan dua angka berbeda.
+    """
+    bagian = []
+    for a in alasan:
+        if a.startswith("mata terpejam") and durasi:
+            bagian.append(f"mata terpejam {durasi:.1f} detik")
+        else:
+            bagian.append(a)
+    if menguap_kali:
+        bagian.append(f"menguap {menguap_kali} kali")
+    return ", ".join(bagian)
+
+
 def _catat_episode(sesi: Sesi, st: Status, t: float,
                    posisi: Posisi | None = None,
                    web: KeadaanBersama | None = None) -> None:
@@ -775,23 +856,28 @@ def _catat_episode(sesi: Sesi, st: Status, t: float,
         if st.level == KANTUK:
             sesi.episode.append({"mulai": lewat, "selesai": lewat,
                                  "alasan": list(st.alasan),
+                                 "menguap_awal": sesi.penilai.menguap_total,  # type: ignore[union-attr]
                                  "posisi": posisi})
             if web is not None:
                 web.catat_kejadian({
                     "jam": time.strftime("%H:%M:%S"),
                     "lama": "berlangsung",
-                    "alasan": ", ".join(st.alasan),
+                    "alasan": _teks_kondisi(st.alasan, 0.0, 0),
                     "tautan": posisi.tautan if posisi and posisi.valid else "",
                 })
         sesi.level_lalu = st.level
     elif st.level == KANTUK and sesi.episode:
-        sesi.episode[-1]["selesai"] = lewat
-        if web is not None and web.riwayat:
-            web.riwayat[-1]["lama"] = f"{lewat - sesi.episode[-1]['mulai']:.1f} dtk"
+        ep = sesi.episode[-1]
+        durasi = lewat - ep["mulai"]
+        ep["selesai"] = lewat
         for a in st.alasan:
             pokok = a.split(" ")[0]
-            if not any(x.startswith(pokok) for x in sesi.episode[-1]["alasan"]):
-                sesi.episode[-1]["alasan"].append(a)
+            if not any(x.startswith(pokok) for x in ep["alasan"]):
+                ep["alasan"].append(a)
+        if web is not None and web.riwayat:
+            menguap_kali = sesi.penilai.menguap_total - ep["menguap_awal"]  # type: ignore[union-attr]
+            web.riwayat[-1]["lama"] = f"{durasi:.1f} dtk"
+            web.riwayat[-1]["alasan"] = _teks_kondisi(ep["alasan"], durasi, menguap_kali)
 
 
 def _buat_perekam(berkas: str, lebar: int, tinggi: int, fps: float) -> cv2.VideoWriter:

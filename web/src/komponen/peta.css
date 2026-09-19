@@ -1,0 +1,62 @@
+/* Kontrol bawaan Leaflet berlatar putih; di dasbor gelap kotak putih itu
+   menyilaukan dan terlihat seperti tempelan. */
+.peta-jejak.leaflet-container {
+  background: #0b0b0d;
+  font-family: inherit;
+}
+.peta-jejak .leaflet-bar {
+  border: 1px solid rgb(255 255 255 / 0.1) !important;
+  border-radius: 0.5rem;
+  overflow: hidden;
+  box-shadow: 0 4px 16px rgb(0 0 0 / 0.4);
+}
+.peta-jejak .leaflet-bar a {
+  background: rgb(24 24 27 / 0.9);
+  color: #e4e4e7;
+  border-bottom-color: rgb(255 255 255 / 0.08);
+  backdrop-filter: blur(6px);
+}
+.peta-jejak .leaflet-bar a:hover {
+  background: #27272a;
+  color: #fff;
+}
+.peta-jejak .leaflet-bar a.leaflet-disabled {
+  background: rgb(24 24 27 / 0.9);
+  color: #52525b;
+}
+.peta-jejak .leaflet-control-attribution {
+  background: rgb(0 0 0 / 0.55) !important;
+  color: #a1a1aa !important;
+  border-top-left-radius: 0.375rem;
+  font-size: 10px;
+}
+.peta-jejak .leaflet-control-attribution a {
+  color: #d4d4d8 !important;
+}
+
+.penanda-kini {
+  position: relative;
+  width: 18px;
+  height: 18px;
+}
+.penanda-kini::before {
+  content: "";
+  position: absolute;
+  inset: -9px;
+  border-radius: 9999px;
+  background: rgb(52 211 153 / 0.35);
+  animation: denyut 2s ease-out infinite;
+}
+.penanda-kini::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  background: #10b981;
+  border: 3px solid #fff;
+  box-shadow: 0 0 12px rgb(16 185 129 / 0.9);
+}
+@keyframes denyut {
+  from { transform: scale(0.4); opacity: 1; }
+  to { transform: scale(1.6); opacity: 0; }
+}

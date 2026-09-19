@@ -100,7 +100,8 @@ class WebConfig:
     fps_video: int = 5                   # video langsung sengaja dibatasi
     mutu_jpeg: int = 60
     jeda_sampel_detik: float = 1.0       # satu titik grafik per detik
-    jendela_detik: float = 7200.0        # panjang grafik: 2 jam
+    jendela_detik: float = 7200.0        # panjang grafik & jejak peta: 2 jam
+    jejak_min_meter: float = 10.0        # titik jejak baru dicatat tiap bergeser sejauh ini
     folder_web: str = "web/dist"         # hasil `npm run build` di folder web/
     berkas_info: str = "info.json"       # isi tab Info, bisa diubah dari web
     logo_bawaan: str = "aset/logo-undip.png"

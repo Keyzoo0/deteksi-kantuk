@@ -24,8 +24,13 @@ export default function App() {
   useEffect(() => { ambil("/info").then(setInfo).catch(() => setInfo({})) }, [])
 
   const s = data.status || {}
-  const label = s.level || { siaga: "SIAGA", kalibrasi: "KALIBRASI" }[s.keadaan] || "—"
-  const rupa = s.level === "KANTUK" ? "destructive" : s.level ? "default" : "secondary"
+  // Saat wajah hilang penilai tetap berlevel AMAN (tak ada bukti kantuk),
+  // jadi lencana memakai status_deteksi supaya tidak tertulis AMAN palsu.
+  const deteksi = s.status_deteksi || s.level
+  const label = deteksi === "TANPA_WAJAH" ? "TANPA WAJAH"
+    : deteksi || { siaga: "SIAGA", kalibrasi: "KALIBRASI" }[s.keadaan] || "—"
+  const rupa = deteksi === "KANTUK" ? "destructive"
+    : deteksi === "AMAN" ? "default" : "secondary"
 
   return (
     <div className="min-h-svh bg-background text-foreground">
