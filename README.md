@@ -76,16 +76,49 @@ Raspberry Pi tanpa peduli versi paketnya. Berkas model (`face_landmarker.task`,
 
 ### Kalibrasi
 
-Saat mulai, program merekam ±4 detik kondisi wajah normal pengguna (mata terbuka
-wajar, mulut tertutup) dan mengambil **median**-nya sebagai *baseline*. Semua
-penilaian setelah itu memakai **rasio terhadap baseline**, bukan angka mutlak.
+Menyalakan sistem **selalu** diawali kalibrasi. Tidak ada tombol kalibrasi
+tersendiri: mematikan lalu menyalakan lagi sekaligus berfungsi sebagai
+kalibrasi ulang.
+
+#### Tahapan
+
+| # | Tahap | Yang terjadi | Yang diucapkan |
+|---|---|---|---|
+| 1 | **Siaga** | Kamera masih mati, LED berkedip lambat, alat menunggu tombol. | *"Halo, saya asisten pribadi monitoring rasa kantuk…"* |
+| 2 | **Tombol ditahan 3 detik** | Bip pendek menandai tahanan sudah cukup. Kamera menyala saat tombol dilepas. | bip |
+| 3 | **Menunggu wajah** | Kamera menyala, tapi timer belum berjalan. Kalau wajah tidak terlihat lebih dari 3 detik, alat menuntun arah kamera (diulang tiap 5 detik). | *"Arahkan kamera ke wajah Anda."* |
+| 4 | **Instruksi** | Begitu wajah pertama kali terlihat, instruksi diucapkan dan perekaman **ditahan sampai kalimatnya selesai** — percuma mengukur selagi pengguna masih mendengarkan. | *"Memulai kalibrasi. Arahkan dan tahan wajah Anda menghadap ke kamera."* |
+| 5 | **Merekam baseline** | ±4 detik merekam EAR dan MAR, minimal 10 frame berwajah. Layar/web menampilkan hitung mundurnya. | — |
+| 6 | **Monitoring** | Baseline jadi, penilaian kantuk mulai berjalan. | *"Kalibrasi selesai. Sistem monitoring dimulai."* |
+
+Timer 4 detik baru mulai **setelah wajah terlihat**, bukan sejak kamera
+menyala — jadi pengguna tidak kehabisan waktu selagi masih mengatur posisi
+kamera atau memakai helm.
+
+Selama tahap 5 pengguna harus **menghadap kamera, mata terbuka wajar, mulut
+tertutup**. Apa pun yang terekam di situ menjadi acuan "kondisi sadar": kalau
+kalibrasi terjadi sambil menguap atau mata setengah terpejam, seluruh
+penilaian sesudahnya ikut meleset.
+
+#### Yang dihasilkan
+
+Dari rekaman itu diambil **median** EAR dan MAR — bukan rata-rata, supaya satu
+kedipan yang kebetulan jatuh di tengah kalibrasi tidak merusak baseline. Dua
+ambang lahir dari sana:
+
+- **Mata terpejam** — EAR turun di bawah **62% baseline**.
+- **Menguap** — MAR melewati **0,50**, atau **0,30 di atas baseline mulut**
+  orang itu, mana pun yang lebih tinggi. Batas kedua menjaga jarak dari bibir
+  terkatup tiap orang supaya senyum tidak terbaca menguap.
 
 Alasannya: nilai EAR mutlak berbeda-beda antar orang (bentuk mata), antar jarak ke
 kamera, dan antar resolusi webcam. Ambang tetap seperti `EAR < 0.21` sering meleset
 untuk mata sipit atau pengguna berkacamata. Dengan kalibrasi, ambang menyesuaikan
 otomatis ke pengguna yang sedang duduk di depan kamera.
 
-Tekan **`c`** kapan saja untuk kalibrasi ulang (mis. setelah ganti posisi duduk).
+**Kalibrasi ulang:** tahan tombol 3 detik untuk mematikan, lalu tahan lagi untuk
+menyalakan — mis. setelah ganti pengendara atau posisi kamera bergeser. Di
+laptop, tombol **`c`** melakukan hal yang sama.
 
 ### Kapan dinyatakan KANTUK
 
