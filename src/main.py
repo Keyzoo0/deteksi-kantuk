@@ -313,8 +313,14 @@ def _loop(arg, cfg: Config, detektor: DetektorWajah, asisten: AsistenSuara,
         print(f"\n[sistem] menyala -- {asal} -> {info_kamera(cap)}{putaran}")
         return True
 
-    def matikan(alasan: str, sapa_lagi: bool = True) -> None:
-        """Akhiri sesi: cetak ringkasan, lepas kamera, kembali ke layar siaga."""
+    def matikan(alasan: str, sapa_lagi: bool = True, kosongkan: bool = False) -> None:
+        """Akhiri sesi: cetak ringkasan, lepas kamera, kembali ke layar siaga.
+
+        `kosongkan` membuang data sesi di halaman web; hanya dipakai saat
+        pengendara sendiri yang mematikan lewat tombol. Mati otomatis (wajah
+        hilang, kamera lepas) justru tidak boleh menghapus apa pun -- di situ
+        isi grafiknya malah jadi bahan pemeriksaan.
+        """
         nonlocal cap, sesi, keadaan, salam_diucapkan, nama_kamera
         print(f"\n[sistem] {alasan}")
         if sesi is not None and sesi.penilai is not None:
@@ -328,6 +334,9 @@ def _loop(arg, cfg: Config, detektor: DetektorWajah, asisten: AsistenSuara,
         # Sapaan panjang tidak diulang kalau pengguna sendiri yang mematikan:
         # dia baru saja mendengar "sistem dimatikan, silakan beristirahat".
         salam_diucapkan = not sapa_lagi
+        if kosongkan:
+            web.bersihkan()
+            print("[sistem] data grafik, riwayat, dan log kejadian dikosongkan")
         tombol.pola_led(KEDIP_LAMBAT)
 
     try:
@@ -535,7 +544,7 @@ def _loop(arg, cfg: Config, detektor: DetektorWajah, asisten: AsistenSuara,
                 # kalibrasi, jadi tidak ada tombol kalibrasi tersendiri.
                 asisten.ucap(ISTIRAHAT, antre=True, paksa=True)
                 matikan("tombol ditahan -- sistem dimatikan untuk istirahat.",
-                        sapa_lagi=False)
+                        sapa_lagi=False, kosongkan=True)
                 continue
     except KeyboardInterrupt:
         print("\nDihentikan pengguna.")

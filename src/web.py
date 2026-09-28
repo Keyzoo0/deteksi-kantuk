@@ -205,6 +205,21 @@ class KeadaanBersama:
         while self.jejak and t - self.jejak[0][0] > self.cfg.jendela_detik:
             self.jejak.popleft()
 
+    def bersihkan(self) -> None:
+        """Buang seluruh data sesi: grafik, riwayat, jejak, dan log kejadian.
+
+        Dipakai saat pengendara mematikan sistem lewat tombol: menyalakannya
+        lagi berarti perjalanan baru, dan grafik yang masih memuat sisa
+        perjalanan sebelumnya membuat sumbu waktunya melompat-lompat.
+        """
+        with self._kunci:
+            self.sampel.clear()
+            self.riwayat.clear()
+            self.jejak.clear()
+            self.peristiwa.clear()
+            self._sampel_saat = 0.0
+            self.status = {"keadaan": "siaga"}
+
     def catat_peristiwa(self, daftar: list[dict]) -> None:
         if daftar:
             with self._kunci:

@@ -421,6 +421,32 @@ def main() -> int:
                      all(e["timestamp_selesai"] >= e["timestamp_mulai"] for e in ev)
                      and bool(ev)))
 
+    # Tombol ditahan 3 detik -> data sesi dikosongkan (grafik, riwayat,
+    # jejak, log kejadian), tapi status alat tetap ada.
+    web.catat_kejadian({"jam": "10:00:00", "lama": "1 dtk", "alasan": "uji", "tautan": ""})
+    web.jejak.append((0.0, -7.0, 110.0))
+    web.set_alat({"kamera": "C270"})
+    punya = (len(web.sampel), len(web.riwayat), len(web.jejak), len(web.peristiwa))
+    hasil.append(uji("sebelum reset: grafik, riwayat, jejak, kejadian terisi",
+                     all(punya), str(punya)))
+    web.bersihkan()
+    kosong = web.data()
+    hasil.append(uji("tombol ditahan: data sesi dikosongkan",
+                     not (kosong["sampel"] or kosong["riwayat"] or kosong["jejak"]
+                          or web.peristiwa),
+                     f"sampel={len(kosong['sampel'])} riwayat={len(kosong['riwayat'])} "
+                     f"jejak={len(kosong['jejak'])} kejadian={len(web.peristiwa)}"))
+    hasil.append(uji("reset: CSV ikut kosong (tinggal baris judul)",
+                     len(web.ekspor_csv().strip().split("\n")) == 1
+                     and len(web.ekspor_peristiwa_csv().strip().split("\n")) == 1))
+    hasil.append(uji("reset: status kembali siaga, status alat tidak ikut terhapus",
+                     kosong["status"] == {"keadaan": "siaga"}
+                     and kosong["alat"] == {"kamera": "C270"}))
+    st = sesi.penilai.perbarui(HasilDeteksi(ada_wajah=True, ear=EAR_BUKA), t)
+    _suapi_web(web, None, sesi, st, 20.0, gps, t + 5)
+    hasil.append(uji("setelah reset: titik baru tetap tercatat",
+                     len(web.data()["sampel"]) == 1))
+
     lulus = sum(hasil)
     print(f"\n{'=' * 46}\n{lulus}/{len(hasil)} pemeriksaan lulus")
     return 0 if lulus == len(hasil) else 1
