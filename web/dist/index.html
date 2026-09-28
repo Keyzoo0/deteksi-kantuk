@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="id" class="dark">
+<html lang="id">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/png" href="./favicon.png" />
@@ -7,8 +7,25 @@
     <meta name="theme-color" content="#0a0a0b" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Monitor Kantuk</title>
-    <script type="module" crossorigin src="./assets/index-C0qFHK3T.js"></script>
-    <link rel="stylesheet" crossorigin href="./assets/index-BHUlfXQH.css">
+    <script>
+      // Kelas tema dipasang sebelum React jalan; kalau menunggu React,
+      // halaman sempat berkedip putih dulu tiap kali dibuka.
+      (function () {
+        try {
+          var t = localStorage.getItem("tema");
+          if (t !== "terang" && t !== "gelap") {
+            t = matchMedia("(prefers-color-scheme: light)").matches ? "terang" : "gelap";
+          }
+          document.documentElement.classList.toggle("dark", t === "gelap");
+          document.querySelector('meta[name="theme-color"]')
+            .setAttribute("content", t === "gelap" ? "#0a0a0b" : "#ffffff");
+        } catch (e) {
+          document.documentElement.classList.add("dark");
+        }
+      })();
+    </script>
+    <script type="module" crossorigin src="./assets/index-ClOGhGpR.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-BdAFJbRB.css">
   </head>
   <body>
     <div id="root"></div>

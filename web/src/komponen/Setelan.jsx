@@ -85,7 +85,10 @@ export default function Setelan({ info, setInfo, setVersiLogo }) {
           <Button variant="secondary" size="sm"
             onClick={() => confirm("Reboot sekarang?") && jalankan("sys", { perintah: "sistem", aksi: "reboot" })}>
             Reboot</Button>
-          <Button variant="destructive" size="sm"
+          {/* Warna teks ditimpa: varian destructive bawaan memakai
+              text-destructive di atas latar destructive/10, terlalu tipis di
+              tema terang (lihat tools/cek_kontras_web.mjs). */}
+          <Button variant="destructive" size="sm" className="text-red-800 dark:text-red-300"
             onClick={() => confirm("Matikan Raspberry Pi sekarang?") && jalankan("sys", { perintah: "sistem", aksi: "matikan" })}>
             Matikan Pi</Button>
         </div>

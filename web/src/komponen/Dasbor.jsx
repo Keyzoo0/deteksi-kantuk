@@ -4,12 +4,13 @@ import { Separator } from "@/components/ui/separator"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Kartu, Panel } from "@/komponen/bagian"
 
-// Warna garis ditulis harfiah, bukan token tema: token bawaan shadcn untuk
-// grafik semuanya abu-abu, sedangkan dua metrik ini harus bisa dibedakan
-// sekilas.
+// Warna garis punya token sendiri (lihat index.css): token chart-N bawaan
+// shadcn semuanya abu-abu, sedangkan dua metrik ini harus bisa dibedakan
+// sekilas -- dan nilainya berbeda antara tema terang dan gelap supaya
+// sama-sama terbaca.
 const konfigGrafik = {
-  ear: { label: "EAR (% baseline)", color: "oklch(0.72 0.17 145)" },
-  perclos: { label: "PERCLOS (%)", color: "oklch(0.78 0.14 75)" },
+  ear: { label: "EAR (% baseline)", color: "var(--garis-ear)" },
+  perclos: { label: "PERCLOS (%)", color: "var(--garis-perclos)" },
 }
 
 // Sebelum kalibrasi selesai (atau sebelum sistem dinyalakan) belum ada
@@ -52,23 +53,26 @@ function PanelKalibrasi({ s }) {
 // yang baru padam setelah tombol ditekan. Keduanya sering berbeda (frame
 // sudah AMAN, alarm masih tingkat 2), jadi ditampilkan terpisah dan berlabel.
 const RUPA_DETEKSI = {
-  AMAN: ["AMAN", "border-emerald-500/30 bg-emerald-500/10 text-emerald-400"],
-  KANTUK: ["KANTUK", "border-destructive/40 bg-destructive/15 text-red-400"],
-  TANPA_WAJAH: ["Wajah tidak terdeteksi", "border-amber-500/30 bg-amber-500/10 text-amber-300"],
+  AMAN: ["AMAN", "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"],
+  KANTUK: ["KANTUK", "border-destructive/40 bg-destructive/15 text-red-800 dark:text-red-300"],
+  TANPA_WAJAH: ["Wajah tidak terdeteksi",
+                "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300"],
 }
 const TEKS_ALARM = ["Tenang", "Tingkat 1 · peringatan suara",
                     "Tingkat 2 · alarm menerus", "Tingkat 3 · kerabat dikabari"]
-const RUPA_ALARM = ["border-border bg-background text-foreground",
-                    "border-amber-500/30 bg-amber-500/10 text-amber-300",
-                    "border-destructive/40 bg-destructive/15 text-red-400",
-                    "border-destructive/60 bg-destructive/25 text-red-300"]
+const RUPA_ALARM = ["border-border bg-muted/40 text-foreground dark:bg-background",
+                    "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300",
+                    "border-destructive/40 bg-destructive/15 text-red-800 dark:text-red-300",
+                    "border-destructive/60 bg-destructive/25 text-red-900 dark:text-red-200"]
 
 function Lencana({ label, nilai, ket, rupa }) {
   return (
     <div className={`rounded-md border px-3 py-2 ${rupa}`}>
-      <p className="text-[11px] leading-tight opacity-80">{label}</p>
+      {/* Tanpa opacity: teks 11px di atas latar berwarna jadi terlalu tipis
+          untuk dibaca di bawah matahari (lihat tools/cek_kontras_web.mjs). */}
+      <p className="text-[11px] leading-tight">{label}</p>
       <p className="text-base font-semibold leading-snug">{nilai}</p>
-      <p className="text-[11px] leading-tight opacity-70">{ket}</p>
+      <p className="text-[11px] leading-tight">{ket}</p>
     </div>
   )
 }
@@ -83,7 +87,7 @@ function PanelDeteksi({ s }) {
   const ukur = (v) => (aktif && s.wajah ? v : "—")
   const [teksDeteksi, rupaDeteksi] = aktif
     ? RUPA_DETEKSI[s.status_deteksi] || RUPA_DETEKSI.AMAN
-    : ["—", "border-border bg-background text-muted-foreground"]
+    : ["—", "border-border bg-muted/40 text-muted-foreground dark:bg-background"]
   const tingkat = Math.min(3, Math.max(0, s.tingkat ?? 0))
 
   return (
@@ -93,7 +97,7 @@ function PanelDeteksi({ s }) {
                  ket="penilaian frame saat ini" />
         <Lencana label="Tingkat alarm" nilai={aktif ? TEKS_ALARM[tingkat] : "—"}
                  rupa={aktif ? RUPA_ALARM[tingkat]
-                             : "border-border bg-background text-muted-foreground"}
+                             : "border-border bg-muted/40 text-muted-foreground dark:bg-background"}
                  ket="eskalasi; padam setelah tombol ditekan" />
       </div>
       {tanpaWajah && (
@@ -122,10 +126,11 @@ function Peringatan({ teks }) {
   return (
     <div className="flex items-center gap-2 rounded-md border border-amber-500/25 bg-amber-500/10 px-3 py-2">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-           strokeWidth="2" strokeLinecap="round" className="shrink-0 text-amber-400">
+           strokeWidth="2" strokeLinecap="round"
+           className="shrink-0 text-amber-600 dark:text-amber-400">
         <circle cx="12" cy="12" r="9" /><path d="M12 8v5" /><path d="M12 16h.01" />
       </svg>
-      <p className="text-sm text-amber-200/90">{teks}</p>
+      <p className="text-sm text-amber-800 dark:text-amber-200/90">{teks}</p>
     </div>
   )
 }
@@ -237,7 +242,8 @@ export default function Dasbor({ data }) {
               <CartesianGrid vertical={false} />
               <XAxis dataKey="menit" tickLine={false} axisLine={false} tickMargin={8}
                      unit=" mnt" minTickGap={40} />
-              <YAxis domain={[0, 150]} tickLine={false} axisLine={false} width={34} unit="%" />
+              {/* Lebar 34 memotong "150%" jadi "50%" -- angka teratas skala. */}
+              <YAxis domain={[0, 150]} tickLine={false} axisLine={false} width={46} unit="%" />
               {/* Garis tipis menandai saat alarm berbunyi, tanpa menutupi metrik. */}
               {titik.filter(t => t.tingkat > 0).map((t, i) => (
                 <ReferenceLine key={i} x={t.menit} stroke="var(--destructive)" strokeOpacity={0.45} />

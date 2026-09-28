@@ -3,9 +3,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 
 export function Kartu({ label, nilai, lebar }) {
   return (
-    <div className={`rounded-md border bg-background px-2.5 py-2 ${lebar || ""}`}>
+    <div className={`rounded-md border bg-muted/40 px-2.5 py-2 dark:bg-background ${lebar || ""}`}>
       <p className="truncate text-sm font-semibold leading-tight" title={String(nilai)}>{nilai}</p>
-      <p className="text-[11px] leading-tight text-muted-foreground">{label}</p>
+      {/* Label sengaja sewarna teks utama, bukan abu-abu: kartu ini dibaca
+          sambil menunduk sebentar di atas motor, sering di bawah matahari. */}
+      <p className="text-[11px] leading-tight text-foreground">{label}</p>
     </div>
   )
 }
