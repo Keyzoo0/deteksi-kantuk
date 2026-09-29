@@ -78,6 +78,11 @@
        terbaca di atas latar putih. */
     --garis-ear: oklch(0.55 0.16 145);
     --garis-perclos: oklch(0.58 0.14 70);
+    /* Warna aksi di grafik & log tombol (PanelTombol.jsx). */
+    --aksi-nyala: oklch(0.55 0.16 150);
+    --aksi-mati: oklch(0.55 0.2 25);
+    --aksi-alarm: oklch(0.62 0.15 70);
+    --aksi-netral: oklch(0.55 0.01 260);
     --sidebar: oklch(0.985 0 0);
     --sidebar-foreground: oklch(0.145 0 0);
     --sidebar-primary: oklch(0.205 0 0);
@@ -122,6 +127,10 @@
     --sidebar-ring: oklch(0.556 0 0);
     --garis-ear: oklch(0.72 0.17 145);
     --garis-perclos: oklch(0.78 0.14 75);
+    --aksi-nyala: oklch(0.74 0.17 150);
+    --aksi-mati: oklch(0.7 0.19 25);
+    --aksi-alarm: oklch(0.8 0.15 75);
+    --aksi-netral: oklch(0.7 0.01 260);
 }
 
 @layer base {

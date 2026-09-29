@@ -2,7 +2,8 @@ import { CartesianGrid, Line, LineChart, ReferenceLine, XAxis, YAxis } from "rec
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart"
 import { Separator } from "@/components/ui/separator"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Kartu, Panel } from "@/komponen/bagian"
+import { Kartu, Panel, TautanUnduh } from "@/komponen/bagian"
+import PanelTombol from "@/komponen/PanelTombol"
 
 // Warna garis punya token sendiri (lihat index.css): token chart-N bawaan
 // shadcn semuanya abu-abu, sedangkan dua metrik ini harus bisa dibedakan
@@ -211,7 +212,8 @@ export default function Dasbor({ data }) {
       <PanelDeteksi s={s} />
 
       <Panel judul="EAR & PERCLOS — 2 jam terakhir" kelas="xl:col-span-12"
-        aksi={<div className="flex items-center gap-3 text-xs text-muted-foreground">
+        aksi={<div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1.5 text-xs
+                              text-muted-foreground">
           {[["EAR", konfigGrafik.ear.color], ["PERCLOS", konfigGrafik.perclos.color]].map(([n, c]) => (
             <span key={n} className="flex items-center gap-1.5">
               <span className="h-0.5 w-2.5 rounded-full" style={{ background: c }} />{n}</span>
@@ -222,14 +224,14 @@ export default function Dasbor({ data }) {
               KeadaanBersama.ekspor_csv). CSV kejadian: tiap kedip / mata
               terpejam / menguap dengan waktu dan durasinya -- kedipan terlalu
               singkat untuk tertangkap sampel 1 Hz. */}
-          <a href="/ekspor.csv" download
-             className="underline decoration-dotted hover:text-foreground">
+          <TautanUnduh href="/ekspor.csv"
+                       judul="Satu baris per detik: EAR, MAR, PERCLOS, status, tingkat alarm, dll.">
             CSV grafik
-          </a>
-          <a href="/ekspor-kejadian.csv" download
-             className="underline decoration-dotted hover:text-foreground">
+          </TautanUnduh>
+          <TautanUnduh href="/ekspor-kejadian.csv"
+                       judul="Tiap kedip, mata terpejam, dan menguap beserta waktu & durasinya">
             CSV kejadian
-          </a>
+          </TautanUnduh>
         </div>}>
         {titik.length === 0 ? (
           <div className="flex h-44 items-center justify-center rounded-md border bg-background
@@ -255,6 +257,8 @@ export default function Dasbor({ data }) {
           </ChartContainer>
         )}
       </Panel>
+
+      <PanelTombol tombol={data.tombol} />
 
       {/* 0,0 dipakai backend sebagai "belum ada posisi" (titik nol ada di
           tengah laut, jadi aman dipakai sebagai penanda kosong) -- panel

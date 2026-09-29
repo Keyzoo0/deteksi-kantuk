@@ -1,4 +1,7 @@
 // Potongan tampilan yang dipakai ulang di beberapa tab.
+import { Download } from "lucide-react"
+import { buttonVariants } from "@/components/ui/button"
+import { cn } from "@/lib/utils"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 
 export function Kartu({ label, nilai, lebar }) {
@@ -35,5 +38,18 @@ export function Panel({ judul, kelas, aksi, children }) {
       </CardHeader>
       <CardContent className="px-4">{children}</CardContent>
     </Card>
+  )
+}
+
+// Tautan unduh CSV. Garis tepinya dipertegas di tema terang: tepi bawaan
+// varian outline nyaris putih, jadi di atas kartu putih tombolnya tidak
+// terlihat sebagai tombol sama sekali.
+export function TautanUnduh({ href, judul, children }) {
+  return (
+    <a href={href} download title={judul}
+       className={cn(buttonVariants({ variant: "outline", size: "xs" }),
+                     "border-foreground/25 dark:border-input")}>
+      <Download />{children}
+    </a>
   )
 }
