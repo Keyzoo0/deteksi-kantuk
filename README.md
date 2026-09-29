@@ -17,10 +17,22 @@ memakai pull-up internal. Artinya dibedakan dari lama tekanan, dan aksinya
 dijalankan saat **dilepas** — selagi ditahan hanya keluar bunyi bip penanda
 ambang, sehingga menahan lama tidak lebih dulu memicu aksi yang lebih pendek.
 
-| Tekanan | Arti | Isyarat |
-|---|---|---|
-| Ketuk (<1 detik) | Matikan alarm yang sedang berbunyi | — |
-| Tahan 3 detik+ | Nyalakan sistem / matikan sistem untuk istirahat | satu bip |
+| Tekanan | Kapan | Arti | Isyarat |
+|---|---|---|---|
+| Ketuk (<1 detik) | alarm berbunyi | Matikan alarm | — |
+| Tahan **3 detik+** | sistem siaga | Nyalakan sistem | satu bip di detik 3 |
+| Tahan **8 detik+** | sistem menyala | Matikan sistem untuk istirahat | satu bip di detik 8 |
+
+Mematikan sengaja jauh lebih lama daripada menyalakan. Tombolnya di stang dekat
+jempol, jadi tersenggol beberapa detik saat berkendara masih mungkin terjadi —
+dan sistem yang mati tanpa sengaja di jalan justru berbahaya. Menahan 8 detik
+hampir mustahil terjadi tanpa sengaja. Saat sistem menyala, tombol yang
+dilepas di antara 1 dan 8 detik tidak melakukan apa pun. Kedua ambang bisa
+diubah lewat `tombol.tahan_detik` dan `tombol.tahan_mati_detik` di
+`config.json`.
+
+Setiap tekanan — termasuk yang tidak menghasilkan aksi — tercatat di panel
+**Tombol** pada web UI (lihat [Web UI](#web-ui)).
 
 Menyalakan sistem selalu diawali kalibrasi, jadi mematikan lalu menyalakan lagi
 sekaligus berfungsi sebagai kalibrasi ulang. Tombol ini sengaja tidak bisa
@@ -116,9 +128,9 @@ kamera, dan antar resolusi webcam. Ambang tetap seperti `EAR < 0.21` sering mele
 untuk mata sipit atau pengguna berkacamata. Dengan kalibrasi, ambang menyesuaikan
 otomatis ke pengguna yang sedang duduk di depan kamera.
 
-**Kalibrasi ulang:** tahan tombol 3 detik untuk mematikan, lalu tahan lagi untuk
-menyalakan — mis. setelah ganti pengendara atau posisi kamera bergeser. Di
-laptop, tombol **`c`** melakukan hal yang sama.
+**Kalibrasi ulang:** tahan tombol 8 detik untuk mematikan, lalu tahan 3 detik
+untuk menyalakan lagi — mis. setelah ganti pengendara atau posisi kamera
+bergeser. Di laptop, tombol **`c`** melakukan hal yang sama.
 
 ### Kapan dinyatakan KANTUK
 
@@ -254,6 +266,34 @@ monitoring — memuat kondisi kamera, suara, GPS, internet, kerabat terdaftar,
 dan tingkat alarm. Halaman yang kosong tidak bisa dibedakan dari alat yang
 rusak, padahal justru sebelum berangkat itulah pengendara perlu memastikan
 semuanya sudah siap.
+
+Panel **Tombol** memantau tombol fisik:
+
+- **Status langsung** — DITEKAN / dilepas, plus bilah progres selagi ditahan
+  dengan penanda di 3 detik (nyalakan) dan 8 detik (matikan). Diambil dari
+  rute ringan `/tombol` empat kali per detik; `/data` hanya diambil tiap
+  2 detik, terlalu lambat untuk menangkap tekanan singkat.
+- **Grafik ditekan/dilepas 2 jam terakhir**, bisa diperbesar ke 30 atau
+  5 menit terakhir. Di sumbu 2 jam, tekanan 8 detik proporsionalnya hanya
+  ~1,5 piksel, jadi tiap pulsa diberi lebar minimum dan diwarnai sesuai aksinya
+  (menyalakan, mematikan, matikan alarm, lainnya); durasi tepatnya muncul saat
+  kursor diarahkan ke pulsa.
+- **Tabel log** — waktu tekan, durasi, aksi, dan keadaan sistem saat itu.
+
+Log tombol disimpan sebagai momen tekan dan lepas, bukan sampel per detik:
+ketukan lebih singkat dari 1 detik dan akan lolos dari sampel 1 Hz. Log ini
+sengaja **tidak ikut dikosongkan** saat sistem dimatikan lewat tombol — ia
+mencatat alat, bukan perjalanan, dan tekanan "mematikan" itu sendiri harus
+tetap terlihat.
+
+Tiga data bisa diunduh sebagai CSV (tombol unduh ada di panelnya masing-masing),
+semuanya 2 jam terakhir dengan timestamp berzona WIB:
+
+| Berkas | Rute | Isi |
+|---|---|---|
+| `deteksi-kantuk.csv` | `/ekspor.csv` | Satu baris per detik: EAR, MAR, PERCLOS, status, alasan, tingkat alarm, baseline & ambang, fps |
+| `deteksi-kantuk-kejadian.csv` | `/ekspor-kejadian.csv` | Tiap kedip, mata terpejam, dan menguap beserta waktu mulai-selesai dan durasinya |
+| `deteksi-kantuk-tombol.csv` | `/ekspor-tombol.csv` | Tiap tekanan tombol: waktu tekan & lepas, durasi, aksi, keadaan sistem |
 
 Antarmukanya dibangun dengan **Vite + React + shadcn/ui** di folder `web/`.
 Yang berjalan di Raspberry Pi hanyalah hasil `npm run build` — Pi **tidak perlu

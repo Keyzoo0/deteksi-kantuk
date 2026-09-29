@@ -11,10 +11,11 @@ Sistem berjalan sebagai tiga keadaan:
                   sendiri dan kembali ke SIAGA (ketuk tombol untuk mulai lagi).
 
 Jalankan:  python -m src.main            (dari folder project)
-Tombol fisik : ketuk = matikan alarm | tahan 3 dtk = nyalakan/matikan sistem
+Tombol fisik : ketuk = matikan alarm | tahan 3 dtk = nyalakan (saat siaga)
+               | tahan 8 dtk = matikan (saat menyala)
                (tombol ini tidak bisa mematikan Raspberry Pi -- pakai SSH)
 Papan ketik  : hanya untuk pengembangan di laptop --
-               spasi = ketuk | c = tahan 3 dtk | q keluar | d landmark
+               spasi = ketuk | c = tahan (nyalakan/matikan) | q keluar | d landmark
 
 Menyalakan sistem selalu diawali kalibrasi, jadi mematikan lalu menyalakan
 lagi sekaligus berfungsi sebagai kalibrasi ulang -- tidak perlu tombol sendiri.
@@ -190,8 +191,8 @@ def _jalankan(arg: argparse.Namespace) -> int:
     print(f"Kalibrasi: {cfg.kalibrasi_detik:.0f} detik setelah wajah terlihat")
     print(f"Mati auto: wajah hilang >{cfg.mati_tanpa_wajah_detik:.0f} detik saat monitoring")
     print(f"Mode     : {'jendela OpenCV' if tampilkan else 'headless (terminal)'}")
-    print("Tombol   : ketuk = matikan alarm | tahan 3 dtk = nyalakan/matikan "
-          "sistem\n")
+    print(f"Tombol   : ketuk = matikan alarm | tahan {cfg.tombol.tahan_detik:.0f} dtk "
+          f"= nyalakan | tahan {cfg.tombol.tahan_mati_detik:.0f} dtk = matikan\n")
 
     tombol = TombolFisik(cfg.tombol)
     print(f"Tombol   : {tombol.keterangan}")
@@ -289,7 +290,14 @@ def _loop(arg, cfg: Config, detektor: DetektorWajah, asisten: AsistenSuara,
             return TAHAN
         if kunci == ord("d"):
             return "debug"
-        return tombol.periksa(t)
+        # Ambang tahan mengikuti keadaan: menyalakan cukup 3 detik, mematikan
+        # butuh 8 detik supaya tidak terjadi karena tombol tersenggol di jalan.
+        tombol.atur_tahan(cfg.tombol.tahan_detik if keadaan == SIAGA
+                          else cfg.tombol.tahan_mati_detik)
+        peristiwa = tombol.periksa(t)
+        web.set_tombol(tombol.ada, tombol.sedang_ditekan, tombol.lama_ditahan(t),
+                       cfg.tombol.tahan_detik, cfg.tombol.tahan_mati_detik, keadaan)
+        return peristiwa
 
     def nyalakan() -> bool:
         """Buka kamera dan mulai sesi baru. False bila kameranya tidak ada."""
@@ -372,6 +380,7 @@ def _loop(arg, cfg: Config, detektor: DetektorWajah, asisten: AsistenSuara,
                                               None, sekarang, ""))
                     web.catat_posisi(gps.posisi, cfg.gps.ambang_berhenti_kmh)
                 peristiwa = baca_tombol(bingkai_siaga, time.monotonic())
+                lama_tekan = tombol.ambil_tekanan()
                 if peristiwa == "keluar":
                     break
                 if peristiwa == ISYARAT_TAHAN:
@@ -379,11 +388,18 @@ def _loop(arg, cfg: Config, detektor: DetektorWajah, asisten: AsistenSuara,
                     isyarat(BIP)
                 if peristiwa == TAHAN:
                     asisten.diam()          # potong sapaan, langsung bekerja
-                    if not nyalakan():
+                    berhasil = nyalakan()
+                    if lama_tekan is not None:
+                        web.catat_tombol(lama_tekan, "menyalakan" if berhasil
+                                         else "menyalakan gagal", SIAGA)
+                    if not berhasil:
                         salam_diucapkan = False
                         continue
-                elif not tampilkan:
-                    time.sleep(0.05)        # tanpa jendela, jangan sibuk 100% CPU
+                else:
+                    if lama_tekan is not None:
+                        web.catat_tombol(lama_tekan, _aksi_tombol(peristiwa, SIAGA), SIAGA)
+                    if not tampilkan:
+                        time.sleep(0.05)    # tanpa jendela, jangan sibuk 100% CPU
                 continue
 
             assert cap is not None and sesi is not None
@@ -519,6 +535,14 @@ def _loop(arg, cfg: Config, detektor: DetektorWajah, asisten: AsistenSuara,
                 perekam.write(frame)
 
             peristiwa = baca_tombol(frame, t)
+            lama_tekan = tombol.ambil_tekanan()
+            if lama_tekan is not None:
+                # Dicatat sebelum aksinya dijalankan: ketukan mereset tingkat
+                # alarm dan tahan mengubah keadaan, padahal label log butuh
+                # keduanya sebagaimana adanya saat tombol dilepas.
+                web.catat_tombol(lama_tekan,
+                                 _aksi_tombol(peristiwa, keadaan, sesi.alarm.tingkat),
+                                 keadaan)
             if peristiwa == "keluar":
                 break
             elif peristiwa == "debug":
@@ -631,6 +655,15 @@ _SUARA_ALARM = {
     MENEPI: (BERHENTI,),
     SELESAI: (),
 }
+
+
+def _aksi_tombol(peristiwa: str | None, keadaan: str, tingkat_alarm: int = 0) -> str:
+    """Label log tombol untuk satu tekanan yang baru dilepas."""
+    if peristiwa == TAHAN:
+        return "menyalakan" if keadaan == SIAGA else "mematikan"
+    if peristiwa == KETUK:
+        return "matikan alarm" if tingkat_alarm else "ketuk"
+    return "tidak ada aksi"         # dilepas di antara ketuk dan ambang tahan
 
 
 def _mainkan(asisten: AsistenSuara, peristiwa: str) -> None:

@@ -170,7 +170,11 @@ class TombolConfig:
     pin: int = 21                        # GPIO21 = pin fisik 40 (GND di pin 39)
     pin_led: int = 27                    # GPIO27 = pin fisik 13; 0 = tanpa LED
     ketuk_maks_detik: float = 1.0        # <= ini dianggap ketukan pendek
-    tahan_detik: float = 3.0             # tahan sekian -> kalibrasi ulang
+    tahan_detik: float = 3.0             # siaga: tahan sekian -> nyalakan sistem
+    # Mematikan sengaja jauh lebih lama daripada menyalakan: tombolnya di stang
+    # dekat jempol, jadi tersenggol 3 detik saat berkendara masih mungkin,
+    # dan sistem yang mati tanpa sengaja di jalan justru berbahaya.
+    tahan_mati_detik: float = 8.0        # menyala: tahan sekian -> matikan sistem
     debounce_detik: float = 0.05
 
 

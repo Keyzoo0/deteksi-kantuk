@@ -4,7 +4,12 @@ Alat ini dipakai tanpa monitor maupun keyboard, jadi satu tombol memikul dua
 peran yang dibedakan dari lama tekanan:
 
     ketuk (<1 detik)   -- matikan alarm yang sedang berbunyi (bukti masih sadar)
-    tahan 3 detik+     -- nyalakan sistem, atau matikan sistem untuk istirahat
+    tahan 3 detik+     -- (saat siaga) nyalakan sistem
+    tahan 8 detik+     -- (saat menyala) matikan sistem untuk istirahat
+
+Ambang tahan bergantung keadaan sistem dan diatur pemanggil lewat
+`TombolFisik.atur_tahan()`. Mematikan sengaja jauh lebih lama: tombolnya di
+stang, jadi tersenggol beberapa detik saat berkendara masih mungkin.
 
 Tombol ini sengaja TIDAK bisa mematikan Raspberry Pi itu sendiri -- kalau
 perlu, matikan lewat SSH (`sudo poweroff`).
@@ -56,6 +61,22 @@ class PenafsirTombol:
 
     _turun: float | None = None
     _sudah: str | None = None      # peristiwa tahan yang sudah dilaporkan
+    # Lama tekanan terakhir yang sudah dilepas, menunggu diambil untuk log.
+    # Dicatat untuk SETIAP tekanan -- termasuk yang tidak menghasilkan aksi --
+    # supaya grafik log tombol sama persis dengan yang benar-benar terjadi.
+    _selesai: float | None = None
+
+    @property
+    def sedang_ditekan(self) -> bool:
+        return self._turun is not None
+
+    def lama_ditahan(self, t: float) -> float:
+        return 0.0 if self._turun is None else max(0.0, t - self._turun)
+
+    def ambil_tekanan(self) -> float | None:
+        """Lama tekanan yang baru dilepas (sekali ambil), atau None."""
+        lama, self._selesai = self._selesai, None
+        return lama
 
     def perbarui(self, ditekan: bool, t: float) -> str | None:
         """Satu peristiwa per panggilan, atau None.
@@ -80,11 +101,12 @@ class PenafsirTombol:
         lama = t - self._turun
         self._turun = None
         self._sudah = None
+        self._selesai = lama
         if lama >= self.tahan:
             return TAHAN
         if lama <= self.ketuk_maks:
             return KETUK
-        return None                       # 1-3 detik: rentang ambigu, diabaikan
+        return None                       # di antara ketuk dan ambang tahan: diabaikan
 
 
 class TombolFisik:
@@ -125,6 +147,20 @@ class TombolFisik:
     @property
     def ditekan(self) -> bool:
         return bool(self._btn and self._btn.is_pressed)
+
+    def atur_tahan(self, detik: float) -> None:
+        """Ganti ambang tahan (3 dtk saat siaga, 8 dtk saat menyala)."""
+        self.penafsir.tahan = detik
+
+    def ambil_tekanan(self) -> float | None:
+        return self.penafsir.ambil_tekanan()
+
+    def lama_ditahan(self, t: float) -> float:
+        return self.penafsir.lama_ditahan(t)
+
+    @property
+    def sedang_ditekan(self) -> bool:
+        return self.penafsir.sedang_ditekan
 
     def periksa(self, t: float) -> str | None:
         """Panggil tiap frame; kembalikan peristiwa tombol bila ada."""

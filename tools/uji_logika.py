@@ -23,7 +23,8 @@ from src.config import (AlarmConfig, AmbangConfig, Config,   # noqa: E402
 from src.gps import PantauBerhenti, PenguraiNmea, Posisi  # noqa: E402
 from src.tombol_gpio import ISYARAT_TAHAN, KETUK, TAHAN, PenafsirTombol  # noqa: E402
 from src.deteksi import HasilDeteksi                     # noqa: E402
-from src.main import Sesi, _tahap_kalibrasi, _tahap_monitor   # noqa: E402
+from src.main import (Sesi, _aksi_tombol, _tahap_kalibrasi,   # noqa: E402
+                      _tahap_monitor)
 from src.metrik import (AMAN, KANTUK, Baseline, Kalibrator,   # noqa: E402
                         PenilaiKantuk, Status)
 from src.suara import (ARAHKAN, MATI, MENGANTUK, MULAI_KALIBRASI,  # noqa: E402
@@ -273,6 +274,39 @@ def main() -> int:
     hasil.append(uji("tahan 9 dtk tetap TAHAN -- tombol tidak bisa mematikan Pi",
                      tekan([(True, 0.0), (True, 3.1), (True, 8.1), (False, 9.0)]) == [ISYARAT_TAHAN, TAHAN]))
 
+    print("\n12b. Tombol: nyalakan 3 dtk, matikan 8 dtk, semua tekanan tercatat")
+    def tekan_ambang(pola, ambang):
+        pen = PenafsirTombol(tahan=ambang); keluar = []; lama = []
+        for ditekan, t in pola:
+            e = pen.perbarui(ditekan, t)
+            if e:
+                keluar.append(e)
+            d = pen.ambil_tekanan()
+            if d is not None:
+                lama.append(round(d, 2))
+        return keluar, lama
+    hasil.append(uji("menyala (ambang 8): lepas di 5 dtk tidak mematikan",
+                     tekan_ambang([(True, 0.0), (True, 3.5), (False, 5.0)], 8.0)[0] == []))
+    hasil.append(uji("menyala (ambang 8): bip baru di detik 8, bukan detik 3",
+                     tekan_ambang([(True, 0.0), (True, 3.1), (True, 8.1), (False, 8.5)], 8.0)[0]
+                     == [ISYARAT_TAHAN, TAHAN]))
+    hasil.append(uji("siaga (ambang 3): tahan 3,2 dtk menyalakan",
+                     tekan_ambang([(True, 0.0), (True, 3.1), (False, 3.2)], 3.0)[0]
+                     == [ISYARAT_TAHAN, TAHAN]))
+    _, lama = tekan_ambang([(True, 0.0), (False, 0.3), (True, 1.0), (False, 6.0)], 8.0)
+    hasil.append(uji("durasi dicatat untuk tiap tekanan, termasuk yang tanpa aksi",
+                     lama == [0.3, 5.0], str(lama)))
+    pen = PenafsirTombol()
+    pen.perbarui(True, 0.0); pen.perbarui(False, 0.4)
+    hasil.append(uji("durasi tekanan hanya bisa diambil sekali",
+                     pen.ambil_tekanan() is not None and pen.ambil_tekanan() is None))
+    label = [_aksi_tombol(TAHAN, "siaga"), _aksi_tombol(TAHAN, "monitor"),
+             _aksi_tombol(TAHAN, "kalibrasi"), _aksi_tombol(KETUK, "monitor", 2),
+             _aksi_tombol(KETUK, "monitor", 0), _aksi_tombol(None, "monitor")]
+    hasil.append(uji("label aksi tombol sesuai keadaan & tingkat alarm",
+                     label == ["menyalakan", "mematikan", "mematikan", "matikan alarm",
+                               "ketuk", "tidak ada aksi"], str(label)))
+
     print("\n13. GPS: penguraian NMEA dan deteksi kendaraan berhenti")
     u = PenguraiNmea()
     for baris in ("$GPGGA,082754.00,0756.41922,S,11236.69266,E,1,05,1.83,525.2,M,14.6,M,,*43",
@@ -446,6 +480,32 @@ def main() -> int:
     _suapi_web(web, None, sesi, st, 20.0, gps, t + 5)
     hasil.append(uji("setelah reset: titik baru tetap tercatat",
                      len(web.data()["sampel"]) == 1))
+
+    web = KeadaanBersama(cfg_w.web)
+    web.catat_tombol(3.4, "menyalakan", "siaga")
+    web.catat_tombol(8.6, "mematikan", "monitor")
+    web.bersihkan()
+    hasil.append(uji("log tombol TIDAK ikut dikosongkan saat sistem dimatikan",
+                     len(web.data()["tombol"]["log"]) == 2))
+    baris = web.ekspor_tombol_csv().strip().split("\n")
+    hasil.append(uji("CSV tombol: judul + satu baris per tekanan",
+                     baris[0] == "timestamp_tekan,timestamp_lepas,durasi_detik,aksi,keadaan_sistem"
+                     and len(baris) == 3, str(len(baris))))
+    kolom = baris[2].split(",")
+    hasil.append(uji("CSV tombol: durasi & aksi mematikan tercatat",
+                     kolom[2] == "8.600" and kolom[3] == "mematikan", baris[2]))
+    web.tombol_log[0]["mono"] -= cfg_w.web.jendela_detik + 1
+    hasil.append(uji("log tombol lebih dari 2 jam dibuang",
+                     len(web.data()["tombol"]["log"]) == 1))
+    web.set_tombol(True, True, 4.2, 3.0, 8.0, "monitor")
+    langsung = web.tombol()
+    hasil.append(uji("rute /tombol: ambang aktif 8 dtk saat menyala, jam alat ikut",
+                     langsung["ditekan"] and langsung["lama"] == 4.2
+                     and langsung["ambang"] == 8.0 and langsung["ambang_nyala"] == 3.0
+                     and langsung["sekarang"] > 0, str(langsung)))
+    web.set_tombol(True, False, 0.0, 3.0, 8.0, "siaga")
+    hasil.append(uji("rute /tombol: ambang aktif 3 dtk saat siaga",
+                     web.tombol()["ambang"] == 3.0))
 
     lulus = sum(hasil)
     print(f"\n{'=' * 46}\n{lulus}/{len(hasil)} pemeriksaan lulus")

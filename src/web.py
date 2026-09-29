@@ -109,6 +109,14 @@ class KeadaanBersama:
         # bukan jam dinding, karena jam Pi bisa melompat saat NTP tersinkron
         # sesudah boot dan itu akan membuang atau menahan titik secara keliru.
         self.jejak: deque[tuple[float, float, float]] = deque()
+        # Log tombol fisik: satu entri per tekanan yang sudah dilepas. Disimpan
+        # sebagai momen tekan & lepas, bukan sampel per detik -- ketukan lebih
+        # singkat dari 1 detik dan akan lolos dari sampel 1 Hz. Dipangkas
+        # memakai waktu monotonic (lihat jejak), ditampilkan memakai jam dinding.
+        self.tombol_log: deque[dict] = deque(maxlen=5000)
+        self.tombol_langsung: dict = {"ada": False, "ditekan": False, "lama": 0.0,
+                                      "ambang": 3.0, "ambang_nyala": 3.0,
+                                      "ambang_mati": 8.0, "keadaan": "siaga"}
         self.status: dict = {"keadaan": "siaga"}
         # Kondisi perangkat & layanan. Dipisah dari `status` karena tetap
         # berlaku walau sistem belum memonitor -- halaman tidak boleh terlihat
@@ -211,6 +219,10 @@ class KeadaanBersama:
         Dipakai saat pengendara mematikan sistem lewat tombol: menyalakannya
         lagi berarti perjalanan baru, dan grafik yang masih memuat sisa
         perjalanan sebelumnya membuat sumbu waktunya melompat-lompat.
+
+        Log tombol sengaja TIDAK ikut dikosongkan: ia mencatat alat, bukan
+        perjalanan -- dan tekanan "mematikan" yang memicu penghapusan ini
+        justru harus tetap terlihat di log.
         """
         with self._kunci:
             self.sampel.clear()
@@ -219,6 +231,37 @@ class KeadaanBersama:
             self.peristiwa.clear()
             self._sampel_saat = 0.0
             self.status = {"keadaan": "siaga"}
+
+    def set_tombol(self, ada: bool, ditekan: bool, lama: float, ambang_nyala: float,
+                   ambang_mati: float, keadaan: str) -> None:
+        """Keadaan tombol saat ini, diperbarui loop tiap putaran."""
+        with self._kunci:
+            self.tombol_langsung = {
+                "ada": ada, "ditekan": ditekan, "lama": round(lama, 2),
+                "ambang": ambang_nyala if keadaan == "siaga" else ambang_mati,
+                "ambang_nyala": ambang_nyala, "ambang_mati": ambang_mati,
+                "keadaan": keadaan}
+
+    def catat_tombol(self, lama: float, aksi: str, keadaan: str) -> None:
+        """Satu tekanan yang baru dilepas, beserta aksi yang dihasilkannya."""
+        mono, dinding = time.monotonic(), time.time()
+        with self._kunci:
+            self.tombol_log.append({"mono": mono, "waktu": dinding, "lama": lama,
+                                    "aksi": aksi, "keadaan": keadaan})
+            self._pangkas_tombol(mono)
+
+    def _pangkas_tombol(self, t: float) -> None:
+        while self.tombol_log and t - self.tombol_log[0]["mono"] > self.cfg.jendela_detik:
+            self.tombol_log.popleft()
+
+    def tombol(self) -> dict:
+        """Rute /tombol: hanya keadaan langsung, supaya ringan diambil 4x/detik.
+
+        Jam alat ikut dikirim: grafik tombol digambar menurut jam alat, bukan
+        jam HP yang membuka halaman -- keduanya bisa saja berselisih.
+        """
+        with self._kunci:
+            return {**self.tombol_langsung, "sekarang": round(time.time(), 3)}
 
     def catat_peristiwa(self, daftar: list[dict]) -> None:
         if daftar:
@@ -253,6 +296,7 @@ class KeadaanBersama:
             # menambah titik, jadi pemangkasan saat mencatat saja tidak cukup
             # untuk membuang jalur yang sudah lewat 2 jam.
             self._pangkas_jejak(time.monotonic())
+            self._pangkas_tombol(time.monotonic())
             return {
                 "status": self.status,
                 "alat": self.alat,
@@ -263,6 +307,11 @@ class KeadaanBersama:
                             round(s.perclos, 1), s.tingkat] for s in self.sampel],
                 "riwayat": self.riwayat[-50:],
                 "jejak": [[round(lat, 6), round(lon, 6)] for _, lat, lon in self.jejak],
+                # Jam server ikut dikirim: grafik tombol menggambar relatif
+                # terhadap jam alat, bukan jam HP yang bisa saja meleset.
+                "tombol": {"sekarang": round(time.time(), 3),
+                           "log": [[round(e["waktu"], 3), round(e["lama"], 3),
+                                    e["aksi"], e["keadaan"]] for e in self.tombol_log]},
             }
 
     KOLOM_CSV = ("timestamp", "session_id", "detik", "wajah_terdeteksi", "status",
@@ -319,6 +368,23 @@ class KeadaanBersama:
                 p["jenis"], f"{p['detik']:.2f}", f"{p['durasi']:.3f}", p["catatan"],
             ))
         return keluaran.getvalue()
+
+    KOLOM_TOMBOL = ("timestamp_tekan", "timestamp_lepas", "durasi_detik", "aksi",
+                    "keadaan_sistem")
+
+    def ekspor_tombol_csv(self) -> str:
+        """Log tombol 2 jam terakhir, satu baris per tekanan."""
+        with self._kunci:
+            self._pangkas_tombol(time.monotonic())
+            daftar = list(self.tombol_log)
+        keluaran = io.StringIO()
+        tulis = csv.writer(keluaran, lineterminator="\n")
+        tulis.writerow(self.KOLOM_TOMBOL)
+        for e in daftar:
+            tulis.writerow((_jam(e["waktu"] - e["lama"]), _jam(e["waktu"]),
+                            f"{e['lama']:.3f}", e["aksi"], e["keadaan"]))
+        return keluaran.getvalue()
+
 
 def _jarak_meter(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     # Pendekatan equirectangular: untuk jarak belasan meter selisihnya dengan
@@ -388,6 +454,10 @@ class _Penangan(BaseHTTPRequestHandler):
         elif jalur == "/ekspor-kejadian.csv":
             self._kirim_csv(self.keadaan.ekspor_peristiwa_csv(),
                             "deteksi-kantuk-kejadian.csv")
+        elif jalur == "/ekspor-tombol.csv":
+            self._kirim_csv(self.keadaan.ekspor_tombol_csv(), "deteksi-kantuk-tombol.csv")
+        elif jalur == "/tombol":
+            self._kirim(json.dumps(self.keadaan.tombol()).encode(), "application/json")
         else:
             self._kirim_statis(jalur)
 
